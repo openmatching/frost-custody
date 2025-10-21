@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  node0:
+    build: .
+    container_name: signer-node-0
+    volumes:
+      - ./config-node0.toml:/etc/consensus-ring/config.toml:ro
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - signer-net
+
+  node1:
+    build: .
+    container_name: signer-node-1
+    volumes:
+      - ./config-node1.toml:/etc/consensus-ring/config.toml:ro
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+    networks:
+      - signer-net
+
+  node2:
+    build: .
+    container_name: signer-node-2
+    volumes:
+      - ./config-node2.toml:/etc/consensus-ring/config.toml:ro
+    ports:
+      - "3002:3000"
+    restart: unless-stopped
+    networks:
+      - signer-net
+
+networks:
+  signer-net:
+    driver: bridge
+    # For production, set internal: true to disable external network access
+    # internal: true

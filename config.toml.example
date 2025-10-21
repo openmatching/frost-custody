@@ -1,0 +1,21 @@
+[network]
+type = "bitcoin"  # or "testnet", "signet", "regtest"
+
+[signer]
+# Node index: 0, 1, or 2
+node_index = 0
+
+# BIP39 mnemonic (24 words)
+mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+
+# All 3 account xpubs at m/48'/0'/0'/2' (same on all nodes)
+xpubs = [
+    "xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj",
+    "xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz",
+    "xpub6D4BDPcP2GT577Vvch3R8wDkScZWzQzMMUm3PWbmWvVJrZwQY4VUNgqFJPMM3No2dFDFGTsxxpG5uJh7n7epu4trkrX7x7DogT5Uv6fcLW5"
+]
+
+[server]
+host = "0.0.0.0"
+port = 3000
+
