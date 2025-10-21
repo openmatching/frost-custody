@@ -161,25 +161,28 @@ docker build -t consensus-ring .
 
 ### Run 3 Nodes
 
+**Test configs are already included** (`config-node0.toml`, `config-node1.toml`, `config-node2.toml`) with example mnemonics.
+
 ```bash
-# Create configs for each node
-cp config.toml.example config-node0.toml
-cp config.toml.example config-node1.toml
-cp config.toml.example config-node2.toml
-
-# Edit each config with appropriate node_index and mnemonic
-
-# Start all nodes
+# Start all 3 nodes
 docker-compose up -d
+
+# Check logs
+docker-compose logs -f
 
 # Check status
 docker-compose ps
+
+# Stop all nodes
+docker-compose down
 ```
 
 Nodes available at:
-- Node 0: http://localhost:3000
-- Node 1: http://localhost:3001
-- Node 2: http://localhost:3002
+- Node 0: http://localhost:3000 (docs: http://localhost:3000/docs)
+- Node 1: http://localhost:3001 (docs: http://localhost:3001/docs)
+- Node 2: http://localhost:3002 (docs: http://localhost:3002/docs)
+
+⚠️ **For production**: Replace the mnemonics in `config-node*.toml` with real keys and secure the files (`chmod 600`).
 
 ## CEX Integration
 

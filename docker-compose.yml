@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   node0:
     build: .
@@ -9,8 +7,6 @@ services:
     ports:
       - "3000:3000"
     restart: unless-stopped
-    networks:
-      - signer-net
 
   node1:
     build: .
@@ -20,8 +16,6 @@ services:
     ports:
       - "3001:3000"
     restart: unless-stopped
-    networks:
-      - signer-net
 
   node2:
     build: .
@@ -31,11 +25,3 @@ services:
     ports:
       - "3002:3000"
     restart: unless-stopped
-    networks:
-      - signer-net
-
-networks:
-  signer-net:
-    driver: bridge
-    # For production, set internal: true to disable external network access
-    # internal: true
