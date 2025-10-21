@@ -22,7 +22,7 @@ pub fn sign_psbt(
     let secp = Secp256k1::new();
     let mut signed_count = 0;
 
-    // Sign each input
+    // Sign each input with the provided derivation_id
     for (idx, derivation_id) in derivation_ids.iter().enumerate() {
         if idx >= psbt.inputs.len() {
             tracing::warn!(

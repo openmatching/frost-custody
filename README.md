@@ -134,6 +134,8 @@ Response:
 }
 ```
 
+**Note:** `derivation_ids` array must contain one user_id per PSBT input (mapped by index).
+
 ### GET /health
 
 Health check.

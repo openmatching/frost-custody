@@ -14,7 +14,9 @@ pub struct Api {
 pub struct SignRequest {
     /// Base64-encoded PSBT
     pub psbt: String,
-    /// User IDs for key derivation (one per input)
+    /// User IDs for key derivation (one per input).
+    /// Each element corresponds to a PSBT input by index.
+    /// Required: CEX must provide the user_id for each input.
     pub derivation_ids: Vec<u64>,
 }
 
@@ -97,10 +99,11 @@ impl Api {
     async fn sign(&self, req: Json<SignRequest>) -> SignResult {
         let req = req.0;
 
-        // Validate
+        // Validate derivation_ids
         if req.derivation_ids.is_empty() {
             return SignResult::BadRequest(Json(ErrorResponse {
-                error: "derivation_ids cannot be empty".to_string(),
+                error: "derivation_ids cannot be empty - must provide user_id for each input"
+                    .to_string(),
             }));
         }
 
