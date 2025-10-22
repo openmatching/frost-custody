@@ -2,16 +2,37 @@ use anyhow::Result;
 use frost_secp256k1_tr as frost;
 use rand::rngs::OsRng;
 use std::collections::BTreeMap;
+use std::env;
 
 fn main() -> Result<()> {
-    println!("=== FROST Key Generation for Consensus Ring ===\n");
+    println!("=== FROST Key Generation for FROST Custody ===\n");
 
-    let max_signers = 3;
-    let min_signers = 2;
+    // Parse command-line arguments for M-of-N configuration
+    let args: Vec<String> = env::args().collect();
+    let (min_signers, max_signers) = if args.len() >= 3 {
+        let m: u16 = args[1].parse().expect("Invalid min_signers (M)");
+        let n: u16 = args[2].parse().expect("Invalid max_signers (N)");
+        if m > n {
+            eprintln!("Error: M (min_signers) must be ≤ N (max_signers)");
+            std::process::exit(1);
+        }
+        if m < 2 {
+            eprintln!("Error: Minimum threshold must be at least 2");
+            std::process::exit(1);
+        }
+        (m, n)
+    } else {
+        // Default: 2-of-3
+        (2, 3)
+    };
 
     println!("Configuration:");
-    println!("  Max signers: {}", max_signers);
-    println!("  Min signers (threshold): {}", min_signers);
+    println!("  Threshold: {}-of-{}", min_signers, max_signers);
+    println!(
+        "  (Need {} nodes to sign, can tolerate {} failures)",
+        min_signers,
+        max_signers - min_signers
+    );
     println!();
 
     // Generate keys using trusted dealer
@@ -65,7 +86,12 @@ fn main() -> Result<()> {
     println!("  1. Each node gets its own key_package_hex (keep secret!)");
     println!("  2. All nodes share the same pubkey_package_hex");
     println!("  3. Store securely - losing keys = losing funds");
-    println!("  4. Backup all 3 key packages separately");
+    println!("  4. Backup all {} key packages separately", max_signers);
+    println!();
+    println!("Usage:");
+    println!("  cargo run --bin frost-keygen           # Default 2-of-3");
+    println!("  cargo run --bin frost-keygen 3 5       # 3-of-5");
+    println!("  cargo run --bin frost-keygen 14 21     # 14-of-21");
 
     Ok(())
 }
