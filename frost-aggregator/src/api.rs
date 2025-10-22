@@ -144,9 +144,15 @@ impl Api {
             &message[..16.min(message.len())]
         );
 
-        // Orchestrate FROST signing with configured nodes
-        match frost_client::sign_message(&message, &self.config.signer_nodes, self.config.threshold)
-            .await
+        // Note: Basic message signing doesn't have passphrase context, use empty string
+        // For PSBT signing with passphrases, use /api/sign/psbt endpoint
+        match frost_client::sign_message(
+            "",
+            &message,
+            &self.config.signer_nodes,
+            self.config.threshold,
+        )
+        .await
         {
             Ok((signature, signers_used)) => {
                 tracing::info!("Successfully signed with {} nodes", signers_used);

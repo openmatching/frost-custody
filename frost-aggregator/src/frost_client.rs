@@ -9,6 +9,7 @@ use crate::api::NodeHealthStatus;
 
 #[derive(Serialize)]
 struct Round1Request {
+    passphrase: String,
     message: String,
 }
 
@@ -22,6 +23,7 @@ struct Round1Response {
 
 #[derive(Serialize)]
 struct Round2Request {
+    passphrase: String,
     message: String,
     encrypted_nonces: String,
     all_commitments: Vec<CommitmentEntry>,
@@ -41,6 +43,7 @@ struct Round2Response {
 
 #[derive(Serialize)]
 struct AggregateRequest {
+    passphrase: String,
     message: String,
     all_commitments: Vec<CommitmentEntry>,
     signature_shares: Vec<SignatureShareEntry>,
@@ -65,6 +68,7 @@ struct AggregateResponse {
 ///
 /// CEX backend just calls this once - all FROST coordination is hidden!
 pub async fn sign_message(
+    passphrase: &str,
     message: &str,
     signer_urls: &[String],
     threshold: usize,
@@ -87,6 +91,7 @@ pub async fn sign_message(
         let resp = client
             .post(format!("{}/api/frost/round1", url))
             .json(&Round1Request {
+                passphrase: passphrase.to_string(),
                 message: message.to_string(),
             })
             .send()
@@ -131,6 +136,7 @@ pub async fn sign_message(
         let resp = client
             .post(format!("{}/api/frost/round2", url))
             .json(&Round2Request {
+                passphrase: passphrase.to_string(),
                 message: message.to_string(),
                 encrypted_nonces: r1.encrypted_nonces.clone(),
                 all_commitments: all_commitments.clone(),
@@ -167,6 +173,7 @@ pub async fn sign_message(
     let resp = client
         .post(format!("{}/api/frost/aggregate", signer_urls[0]))
         .json(&AggregateRequest {
+            passphrase: passphrase.to_string(),
             message: message.to_string(),
             all_commitments,
             signature_shares,
@@ -286,10 +293,11 @@ pub async fn sign_psbt(
             input_index
         );
 
-        // Perform FROST signing for this sighash
-        let (signature_hex, _signers_used) = sign_message(sighash_hex, signer_urls, threshold)
-            .await
-            .context(format!("Failed to sign input {}", input_index))?;
+        // Perform FROST signing for this sighash with the passphrase
+        let (signature_hex, _signers_used) =
+            sign_message(passphrase, sighash_hex, signer_urls, threshold)
+                .await
+                .context(format!("Failed to sign input {}", input_index))?;
 
         // Decode signature (64 bytes for Schnorr)
         let signature_bytes = hex::decode(&signature_hex)
