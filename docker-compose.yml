@@ -66,7 +66,7 @@ services:
     networks:
       - frost-internal
 
-  # FROST Aggregator (port 5000, exposed to CEX)
+  # FROST Aggregator (port 6000, exposed to CEX)
   frost-aggregator:
     image: consensus-ring:latest
     container_name: frost-aggregator
@@ -74,7 +74,7 @@ services:
     volumes:
       - ./aggregator-config.toml:/etc/config.toml:ro
     ports:
-      - "5000:5000"
+      - "6000:6000"
     restart: unless-stopped
     networks:
       - frost-internal

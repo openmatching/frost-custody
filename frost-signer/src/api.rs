@@ -142,7 +142,8 @@ pub struct DkgRound2Response {
 
 #[derive(Debug, Object, Clone)]
 pub struct DkgPackageEntry {
-    pub recipient_index: u16,
+    pub sender_index: u16,    // Who sent this package
+    pub recipient_index: u16, // Who it's for
     pub package: String,
 }
 
@@ -524,9 +525,22 @@ impl Api {
             }
         };
 
-        // Parse all round1 packages
+        // Parse all round1 packages (including our own!)
+        // FROST DKG requires ALL packages
+        tracing::info!(
+            "DKG round2: Received {} round1 packages",
+            req.round1_packages.len()
+        );
+
         let mut round1_packages = std::collections::BTreeMap::new();
         for pkg in req.round1_packages {
+            // Skip our own package - FROST dkg::part2 expects packages from OTHER participants only
+            if pkg.node_index == self.config.node_index {
+                tracing::debug!("Skipping own package (node {})", pkg.node_index);
+                continue;
+            }
+
+            tracing::debug!("Processing package from node {}", pkg.node_index);
             let pkg_bytes = match hex::decode(&pkg.package) {
                 Ok(b) => b,
                 Err(e) => {
@@ -565,6 +579,11 @@ impl Api {
             round1_packages.insert(sender_id, package);
         }
 
+        tracing::info!(
+            "DKG round2: Processed {} packages from other nodes (expected 2 for 3-node DKG)",
+            round1_packages.len()
+        );
+
         // Run DKG part2
         match frost_secp256k1_tr::keys::dkg::part2(round1_secret, &round1_packages) {
             Ok((round2_secret, round2_packages)) => {
@@ -584,6 +603,7 @@ impl Api {
                     let package_json = serde_json::to_vec(&package).unwrap();
 
                     packages.push(DkgPackageEntry {
+                        sender_index: self.config.node_index,  // We are the sender
                         recipient_index,
                         package: hex::encode(package_json),
                     });
@@ -617,9 +637,14 @@ impl Api {
             }
         };
 
-        // Parse round1 packages
+        // Parse round1 packages from OTHER nodes only
         let mut round1_packages = std::collections::BTreeMap::new();
         for pkg in req.round1_packages {
+            // Skip our own package
+            if pkg.node_index == self.config.node_index {
+                continue;
+            }
+
             let pkg_bytes = match hex::decode(&pkg.package) {
                 Ok(b) => b,
                 Err(_) => continue,
@@ -640,7 +665,12 @@ impl Api {
             round1_packages.insert(sender_id, package);
         }
 
-        // Parse round2 packages (only for this node)
+        tracing::info!(
+            "DKG finalize: Processed {} round1 packages from other nodes",
+            round1_packages.len()
+        );
+
+        // Parse round2 packages (packages sent TO this node from other nodes)
         let mut round2_packages = std::collections::BTreeMap::new();
         for pkg in req.round2_packages {
             let pkg_bytes = match hex::decode(&pkg.package) {
@@ -654,15 +684,20 @@ impl Api {
                     Err(_) => continue,
                 };
 
-            // Sender is the one who created this package for us
+            // Use sender_index to identify who sent this package
             let sender_id =
-                match frost_secp256k1_tr::Identifier::try_from((pkg.recipient_index + 1) as u16) {
+                match frost_secp256k1_tr::Identifier::try_from((pkg.sender_index + 1) as u16) {
                     Ok(id) => id,
                     Err(_) => continue,
                 };
 
             round2_packages.insert(sender_id, package);
         }
+
+        tracing::info!(
+            "DKG finalize: Processed {} round2 packages",
+            round2_packages.len()
+        );
 
         // Run DKG part3 (finalize)
         match frost_secp256k1_tr::keys::dkg::part3(

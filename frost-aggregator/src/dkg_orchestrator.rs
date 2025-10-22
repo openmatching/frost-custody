@@ -31,7 +31,8 @@ struct DkgRound2Response {
 
 #[derive(Serialize, Deserialize, Clone)]
 struct DkgPackageEntry {
-    recipient_index: u16,
+    sender_index: u16,    // Who sent this package
+    recipient_index: u16, // Who it's for
     package: String,
 }
 
@@ -132,7 +133,10 @@ pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result
         // Distribute packages to recipients
         for entry in r2.packages {
             let recipient_idx = entry.recipient_index as usize;
-            all_round2_packages[recipient_idx].push(entry);
+            // Add sender_index for tracking
+            let mut entry_with_sender = entry.clone();
+            entry_with_sender.sender_index = i as u16; // Current node is the sender
+            all_round2_packages[recipient_idx].push(entry_with_sender);
         }
 
         tracing::debug!("  ✅ Node {} round2 complete", i);
