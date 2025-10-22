@@ -57,7 +57,7 @@ cp aggregator-config.toml.example aggregator-config.toml
 cargo run --bin frost-aggregator
 
 # Test
-curl -X POST http://127.0.0.1:5000/api/sign \
+curl -X POST http://127.0.0.1:6000/api/sign \
   -H "Content-Type: application/json" \
   -d '{"message":"deadbeef..."}'
 ```
@@ -69,7 +69,7 @@ curl -X POST http://127.0.0.1:5000/api/sign \
 Get Taproot address (proxies to signer node).
 
 ```bash
-curl 'http://127.0.0.1:5000/api/address?passphrase=550e8400-e29b-41d4-a716-446655440000'
+curl 'http://127.0.0.1:6000/api/address?passphrase=550e8400-e29b-41d4-a716-446655440000'
 ```
 
 **Response:**
@@ -86,7 +86,7 @@ curl 'http://127.0.0.1:5000/api/address?passphrase=550e8400-e29b-41d4-a716-44665
 Sign message with FROST threshold (orchestrates 3-round protocol automatically).
 
 ```bash
-curl -X POST http://127.0.0.1:5000/api/sign \
+curl -X POST http://127.0.0.1:6000/api/sign \
   -H "Content-Type: application/json" \
   -d '{"message":"e3b0c442..."}'
 ```
@@ -100,12 +100,48 @@ curl -X POST http://127.0.0.1:5000/api/sign \
 }
 ```
 
+### POST /api/sign/psbt
+
+Sign Bitcoin PSBT with FROST threshold signatures (Taproot key-path spend).
+
+Takes a PSBT with multiple inputs, signs each input's sighash with FROST using the corresponding passphrase, and returns the fully signed PSBT.
+
+```bash
+curl -X POST http://127.0.0.1:6000/api/sign/psbt \
+  -H "Content-Type: application/json" \
+  -d '{
+    "psbt": "cHNidP8BAH...",
+    "passphrases": ["user-deposit-550e8400", "user-deposit-6ba7b810"]
+  }'
+```
+
+**Request:**
+- `psbt`: Base64-encoded PSBT (unsigned)
+- `passphrases`: Array of passphrases (one per input, in order)
+
+**Response:**
+```json
+{
+  "psbt": "cHNidP8BAH...",
+  "inputs_signed": 2
+}
+```
+
+**What it does:**
+1. Decodes PSBT and validates inputs
+2. Extracts sighash for each input (Taproot key-path)
+3. For each input, performs FROST signing with the corresponding passphrase's key shares
+4. Adds Schnorr signatures to PSBT
+5. Returns fully signed PSBT ready for broadcast
+
+**Example:** See `examples/sign_psbt_example.rs` for complete consolidation transaction flow
+
 ### GET /health
 
 Health check with status of all signer nodes.
 
 ```bash
-curl http://127.0.0.1:5000/health
+curl http://127.0.0.1:6000/health
 ```
 
 **Response:**
@@ -255,4 +291,31 @@ networks:
 | **Security**        | ⚠️ Signers exposed      | ✅ Signers isolated       |
 
 **Use aggregator for production!** 🔒
+
+---
+
+## Examples
+
+### Basic Message Signing
+
+```bash
+cargo run --example frost_aggregator_example
+```
+
+Demonstrates simple message signing with FROST threshold signatures.
+
+### PSBT Signing (Recommended!)
+
+```bash
+cargo run --example sign_psbt_example
+```
+
+Complete end-to-end Bitcoin transaction signing flow:
+- Generate 2 unique Taproot addresses via DKG
+- Build consolidation PSBT (2 inputs → 1 output)
+- Sign each input with passphrase-specific FROST shares
+- Finalize transaction ready for broadcast
+
+**This is what you'll use in production for consolidation transactions!**
+
 

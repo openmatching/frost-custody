@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use bitcoin::hashes::{sha256, Hash};
 use bitcoin::key::Secp256k1;
 use bitcoin::Network;
-use frost_secp256k1_tr as frost;
 use serde::Deserialize;
 use std::fs;
 use std::sync::Arc;
@@ -25,12 +24,6 @@ pub struct NetworkConfig {
 #[derive(Debug, Deserialize)]
 pub struct FrostConfig {
     pub node_index: u16,
-    pub min_signers: u16,
-    pub max_signers: u16,
-    /// Hex-encoded FROST key package (secret)
-    pub key_package_hex: String,
-    /// Hex-encoded FROST public key package (shared)
-    pub pubkey_package_hex: String,
     /// Master seed for share derivation (BACKUP THIS! BIP39 mnemonic recommended)
     pub master_seed_hex: String,
     /// Path to RocksDB storage (cache only, recoverable)
@@ -92,12 +85,8 @@ impl FrostNode {
 
     pub fn get_taproot_address(&self, passphrase: &str) -> Result<String> {
         // Get or derive shares for this passphrase
-        let (_key_pkg, pubkey_pkg) = crate::derivation::get_or_derive_share(
-            &self.master_seed,
-            passphrase,
-            self.node_index,
-            &self.share_storage,
-        )?;
+        let (_key_pkg, pubkey_pkg) =
+            crate::derivation::get_or_derive_share(passphrase, &self.share_storage)?;
 
         // Get the derived group public key for this passphrase
         let group_pubkey = pubkey_pkg.verifying_key();

@@ -603,7 +603,7 @@ impl Api {
                     let package_json = serde_json::to_vec(&package).unwrap();
 
                     packages.push(DkgPackageEntry {
-                        sender_index: self.config.node_index,  // We are the sender
+                        sender_index: self.config.node_index, // We are the sender
                         recipient_index,
                         package: hex::encode(package_json),
                     });

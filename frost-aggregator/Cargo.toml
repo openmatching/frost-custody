@@ -16,6 +16,8 @@ toml.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+bitcoin.workspace = true
+base64.workspace = true
 reqwest = { version = "0.12", features = ["json"] }
 serde_json = "1.0"
 hex = "0.4"
@@ -26,3 +28,7 @@ tokio = { version = "1", features = ["full"] }
 [[example]]
 name = "frost_aggregator_example"
 path = "examples/frost_aggregator_example.rs"
+
+[[example]]
+name = "sign_psbt_example"
+path = "examples/sign_psbt_example.rs"

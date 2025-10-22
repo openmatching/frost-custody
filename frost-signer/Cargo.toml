@@ -13,10 +13,6 @@ path = "src/main.rs"
 name = "frost-keygen"
 path = "src/bin/keygen.rs"
 
-[[example]]
-name = "sign_psbt"
-path = "examples/sign_psbt.rs"
-
 [dependencies]
 poem.workspace = true
 poem-openapi.workspace = true

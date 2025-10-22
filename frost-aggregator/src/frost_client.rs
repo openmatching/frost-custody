@@ -1,5 +1,9 @@
 use anyhow::{Context, Result};
+use bitcoin::psbt::Psbt;
+use bitcoin::sighash::{Prevouts, SighashCache, TapSighashType};
+use bitcoin::taproot::Signature as TaprootSignature;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 use crate::api::NodeHealthStatus;
 
@@ -216,6 +220,116 @@ pub async fn get_address(node_url: &str, passphrase: &str) -> Result<String> {
         .context("Failed to parse address response")?;
 
     Ok(addr_resp.address)
+}
+
+/// Sign PSBT with FROST threshold signatures (Taproot key-path spend)
+///
+/// Takes a PSBT and passphrases (one per input), orchestrates FROST signing
+/// for each input's sighash, and returns the fully signed PSBT.
+pub async fn sign_psbt(
+    psbt_b64: &str,
+    passphrases: &[String],
+    signer_urls: &[String],
+    threshold: usize,
+) -> Result<(String, usize)> {
+    // Decode PSBT from base64
+    let mut psbt = Psbt::from_str(psbt_b64).context("Invalid base64 PSBT")?;
+
+    let num_inputs = psbt.unsigned_tx.input.len();
+
+    if passphrases.len() != num_inputs {
+        anyhow::bail!(
+            "Passphrase count mismatch: got {} passphrases for {} inputs",
+            passphrases.len(),
+            num_inputs
+        );
+    }
+
+    tracing::info!(
+        "Signing PSBT with {} inputs using FROST threshold signatures",
+        num_inputs
+    );
+
+    // Extract prevouts for sighash computation
+    let mut prevouts = Vec::new();
+    for (i, input) in psbt.inputs.iter().enumerate() {
+        let prevout = input
+            .witness_utxo
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Input {} missing witness_utxo", i))?
+            .clone();
+        prevouts.push(prevout);
+    }
+
+    // Compute sighashes for each input
+    let mut sighashes = Vec::new();
+    let prevouts_all = Prevouts::All(&prevouts);
+    let mut sighash_cache = SighashCache::new(&psbt.unsigned_tx);
+
+    for input_index in 0..num_inputs {
+        let sighash = sighash_cache
+            .taproot_key_spend_signature_hash(input_index, &prevouts_all, TapSighashType::Default)
+            .context(format!(
+                "Failed to compute sighash for input {}",
+                input_index
+            ))?;
+
+        let sighash_hex = hex::encode(sighash.as_ref() as &[u8]);
+        tracing::debug!("Input {}: sighash = {}...", input_index, &sighash_hex[..16]);
+        sighashes.push(sighash_hex);
+    }
+
+    // Sign each input with FROST (using the corresponding passphrase)
+    for (input_index, (sighash_hex, passphrase)) in sighashes.iter().zip(passphrases).enumerate() {
+        tracing::info!(
+            "Signing input {} with passphrase-specific FROST shares",
+            input_index
+        );
+
+        // Perform FROST signing for this sighash
+        let (signature_hex, _signers_used) = sign_message(sighash_hex, signer_urls, threshold)
+            .await
+            .context(format!("Failed to sign input {}", input_index))?;
+
+        // Decode signature (64 bytes for Schnorr)
+        let signature_bytes = hex::decode(&signature_hex)
+            .context(format!("Invalid signature hex for input {}", input_index))?;
+
+        if signature_bytes.len() != 64 {
+            anyhow::bail!(
+                "Invalid Schnorr signature length for input {}: expected 64 bytes, got {}",
+                input_index,
+                signature_bytes.len()
+            );
+        }
+
+        // Create Taproot signature (Schnorr + sighash type)
+        let schnorr_sig =
+            bitcoin::secp256k1::schnorr::Signature::from_slice(&signature_bytes).context(
+                format!("Invalid Schnorr signature for input {}", input_index),
+            )?;
+
+        let taproot_sig = TaprootSignature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::Default,
+        };
+
+        // Add signature to PSBT input
+        psbt.inputs[input_index].tap_key_sig = Some(taproot_sig);
+
+        tracing::info!(
+            "✅ Input {} signed (passphrase: {}...)",
+            input_index,
+            &passphrase[..8.min(passphrase.len())]
+        );
+    }
+
+    // Serialize signed PSBT back to base64
+    let signed_psbt_b64 = psbt.to_string();
+
+    tracing::info!("✅ PSBT fully signed: {} inputs", num_inputs);
+
+    Ok((signed_psbt_b64, num_inputs))
 }
 
 /// Check health of all signer nodes

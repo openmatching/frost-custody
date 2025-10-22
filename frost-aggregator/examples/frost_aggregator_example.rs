@@ -43,7 +43,7 @@ struct HealthResponse {
 async fn main() -> Result<()> {
     println!("=== FROST Aggregator Example ===\n");
 
-    let aggregator_url = "http://127.0.0.1:5000";
+    let aggregator_url = "http://127.0.0.1:6000";
     let client = reqwest::Client::new();
 
     // 1. Health check
@@ -114,4 +114,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-

@@ -45,9 +45,7 @@ pub fn dkg_part1(
 ///
 /// Tries cache first, falls back to error (DKG must be triggered via aggregator)
 pub fn get_or_derive_share(
-    master_seed: &[u8],
     passphrase: &str,
-    node_index: u16,
     cache: &crate::storage::ShareStorage,
 ) -> Result<(frost::keys::KeyPackage, frost::keys::PublicKeyPackage)> {
     // Try cache first

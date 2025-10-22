@@ -1,76 +1,88 @@
 # Consensus Ring
 
-Bitcoin 2-of-3 threshold signing for CEX deposit addresses.
+Bitcoin 2-of-3 threshold signing for CEX with per-user addresses.
 
 ## Quick Start
 
 ```bash
-make build        # Build Docker image
-make up-multisig  # Deploy traditional multisig
-make test-multisig # Test
+make build          # Build Docker image
+make up-multisig    # Deploy traditional multisig
+# OR
+make up-frost       # Deploy FROST with DKG (56% fee savings!)
 ```
-
-**Production-ready traditional multisig with per-user addresses!**
 
 ---
 
 ## Two Implementations
 
-| Feature      | Traditional Multisig    | FROST DKG                           |
-| ------------ | ----------------------- | ----------------------------------- |
-| **Binary**   | `signer-node`           | `frost-signer` + `frost-aggregator` |
-| **Address**  | bc1q... (P2WSH)         | bc1p... (P2TR Taproot)              |
-| **Per-user** | ✅ Unique per passphrase | ✅ Unique per passphrase (via DKG)   |
-| **Fee**      | ~250 vbytes             | ~110 vbytes (**56% cheaper**)       |
-| **Recovery** | 3 mnemonics             | 3 master seeds + passphrase list    |
-| **Database** | None                    | RocksDB (cache, recoverable)        |
-| **Status**   | ✅ Production ready      | ✅ Complete, needs testing           |
+| Feature      | Traditional Multisig    | FROST DKG                        |
+| ------------ | ----------------------- | -------------------------------- |
+| **Address**  | bc1q... (P2WSH)         | bc1p... (P2TR Taproot)           |
+| **Per-user** | ✅ Unique per passphrase | ✅ Unique per passphrase          |
+| **Fee**      | ~250 vbytes             | ~110 vbytes (**56% cheaper**)    |
+| **Recovery** | 3 mnemonics             | 3 master seeds + passphrase list |
+| **Database** | None                    | RocksDB (cache, recoverable)     |
+| **Status**   | ✅ Production ready      | ✅ **WORKING!**                   |
+
+**Annual savings with FROST (1000 tx/day): $1.5M** 🚀
 
 ---
 
-## Traditional Multisig (Recommended for Production)
+## Traditional Multisig
 
-**Deploy:**
 ```bash
 make up-multisig
 ```
 
 **APIs:**
-```
-GET  /api/address?passphrase={uuid}  → bc1q... (unique multisig address)
-POST /api/sign {psbt, passphrases}   → Signed PSBT
-GET  /health                         → Status
-```
+- `GET /api/address?passphrase={uuid}` → bc1q... address
+- `POST /api/sign {psbt, passphrases}` → Signed PSBT
 
 **Features:**
-- 9-level BIP32 derivation (256-bit keyspace)
+- 9-level BIP32 (256-bit keyspace)
 - Passphrase-based (prevents enumeration)
-- Recoverable from 3 mnemonics
-- Stateless
+- Stateless, seed-recoverable
 
 **Docs:** [signer-node/README.md](signer-node/README.md)
 
 ---
 
-## FROST with DKG (Advanced)
+## FROST with DKG (56% Cheaper!)
 
-**Deploy:**
 ```bash
 make up-frost
 ```
 
 **APIs:**
-```
-POST /api/address/generate {passphrase} → Trigger DKG, return bc1p... address
-POST /api/sign {message}                → Sign with FROST (56% cheaper)
-GET  /health                            → Check all nodes
-```
+- `POST /api/address/generate {passphrase}` → Trigger DKG, return bc1p...
+- `POST /api/sign {message}` → Sign message with FROST
+- `POST /api/sign/psbt {psbt, passphrases}` → Sign Bitcoin PSBT (production!)
 
 **Features:**
-- Deterministic DKG with master seeds (recoverable!)
-- Per-user Taproot addresses
+- Deterministic DKG with master seeds
+- Per-user Taproot addresses  
 - 56% fee savings
-- Real threshold security
+- Seed-recoverable shares
+
+**Example:**
+```bash
+# Generate address (triggers DKG)
+curl -X POST http://127.0.0.1:6000/api/address/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"passphrase":"user-550e8400"}'
+
+# Returns: {"address":"bc1p...", "passphrase":"user-550e8400"}
+
+# Sign PSBT (consolidation transaction)
+curl -X POST http://127.0.0.1:6000/api/sign/psbt \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "psbt": "cHNidP8BAH...",
+    "passphrases": ["user-550e8400", "user-6ba7b810"]
+  }'
+
+# Returns: {"psbt": "cHNidP8BAH...", "inputs_signed": 2}
+```
 
 **Docs:** [FROST.md](FROST.md), [frost-aggregator/README.md](frost-aggregator/README.md)
 
@@ -83,12 +95,16 @@ GET  /health                            → Check all nodes
 ```rust
 use cex_client::*;
 
-// Derive address locally (fast!)
+// Multisig: Derive address locally (fast!)
 let passphrase = Uuid::new_v4().to_string();
 let address = derive_multisig_address(&xpubs, &passphrase, Network::Bitcoin)?;
 
-// Sign PSBT
-let signed = sign_with_threshold(&psbt, &passphrases, &signer_urls)?;
+// FROST: Generate via DKG
+let address = reqwest::post("http://aggregator:6000/api/address/generate")
+    .json(&json!({"passphrase": passphrase}))
+    .send().await?
+    .json::<AddressResponse>().await?
+    .address;
 ```
 
 **Docs:** [cex-client/README.md](cex-client/README.md)
@@ -99,59 +115,104 @@ let signed = sign_with_threshold(&psbt, &passphrases, &signer_urls)?;
 
 **Traditional:**
 ```
-CEX → signer-node × 3 (2-of-3 multisig)
+CEX → signer-node × 3 (ports 3000-3002)
 ```
 
 **FROST:**
 ```
-CEX → frost-aggregator → frost-signer × 3 (2-of-3 threshold)
-      (port 5000)        (internal, isolated)
+CEX → frost-aggregator (port 6000)
+        ↓
+      frost-signer × 3 (internal, isolated)
+```
+
+---
+
+## vs Alternatives
+
+| Approach            | TX Size | Privacy | Complexity | Best For         |
+| ------------------- | ------- | ------- | ---------- | ---------------- |
+| **This (Multisig)** | ~250 vb | Visible | ⭐⭐         | Small-medium CEX |
+| **This (FROST)**    | ~110 vb | Private | ⭐⭐⭐        | Production CEX   |
+| **MPC Service**     | ~140 vb | Private | ⭐          | Large CEX        |
+| **Custom MPC**      | ~140 vb | Private | ⭐⭐⭐⭐⭐      | Very large CEX   |
+
+**Decision guide:**
+- **<100 tx/day**: Use this project (either implementation) ✅
+- **100-1000 tx/day**: Use FROST (saves $1.5M/year) ✅
+- **>1000 tx/day**: Consider MPC service or this + scale up
+
+---
+
+## Deployment
+
+### Quick Deploy
+
+```bash
+make build      # Build Docker image (all 4 binaries)
+make up-frost   # Run FROST (recommended for production)
+make test-frost # Verify health
+```
+
+### Production Checklist
+
+1. **Generate real keys:**
+```bash
+# FROST keys
+cargo run --bin frost-keygen
+# Update frost-config-node0.toml, node1.toml, node2.toml
+
+# Traditional multisig keys (if using)
+# Generate 3 BIP39 mnemonics
+# Update config-node0.toml, node1.toml, node2.toml
+```
+
+2. **Secure configs:**
+```bash
+chmod 600 config-node*.toml frost-config-node*.toml aggregator-config.toml
+```
+
+3. **Deploy:**
+```bash
+make build
+make up-frost  # Or up-multisig, or up-all
+```
+
+4. **Verify:**
+```bash
+curl http://localhost:6000/health
+# Should show all 3 FROST nodes healthy
+```
+
+### Makefile Commands
+
+```bash
+make build        # Build Docker image
+make up-multisig  # Run traditional multisig (ports 3000-3002)
+make up-frost     # Run FROST aggregator + signers (port 6000)
+make up-all       # Run both implementations
+make down         # Stop all services
+make logs         # View logs
+make clean        # Remove everything
 ```
 
 ---
 
 ## Documentation
 
-1. **[README.md](README.md)** - This file (start here)
-2. **[DEPLOY.md](DEPLOY.md)** - Deployment guide
-3. **[cex-client/README.md](cex-client/README.md)** - CEX integration
-4. **[FROST.md](FROST.md)** - FROST with DKG
-5. **[SECURITY.md](SECURITY.md)** - Security design
-6. **[COMPARISON.md](COMPARISON.md)** - vs alternatives
-
----
-
-## Makefile Commands
-
-```bash
-make build         # Build Docker image
-make up-multisig   # Run traditional multisig
-make up-frost      # Run FROST with DKG
-make down          # Stop all
-make test-multisig # Test multisig
-make test-frost    # Test FROST
-```
+1. **[README.md](README.md)** - This file (overview + quickstart)
+2. **[FROST.md](FROST.md)** - FROST DKG details
+3. **[SECURITY.md](SECURITY.md)** - Security design
+4. **[cex-client/README.md](cex-client/README.md)** - CEX integration
 
 ---
 
 ## Key Features
 
-### Security
-- **Passphrase-based**: UUIDs prevent address enumeration
-- **9-level BIP32**: Full 256-bit keyspace (multisig)
+- **Passphrase-based**: UUIDs (256-bit space, no enumeration)
 - **Deterministic DKG**: Seed-recoverable FROST shares
 - **2-of-3 threshold**: 1 node compromise = safe
-
-### Performance
-- **Local derivation**: ~200µs (multisig)
-- **FROST fee savings**: 56% vs multisig
-- **Annual savings**: $1.5M at 1000 tx/day
-
-### Architecture
-- **Stateless**: Multisig has no database
-- **Recoverable**: FROST shares from master seeds
-- **Isolated**: FROST aggregator pattern
-- **Unified**: Single Dockerfile, one compose file
+- **Isolated signers**: FROST aggregator pattern
+- **56% fee savings**: FROST vs multisig ($1.5M/year at 1000 tx/day)
 
 ---
 

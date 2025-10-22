@@ -12,13 +12,13 @@ Bitcoin threshold signing using FROST (Flexible Round-Optimized Schnorr Threshol
 - ✅ Aggregate: Combine signature shares into final signature
 - ✅ Signature verification
 
-**Unique approach:** Encrypted client-side nonce storage
-- Servers remain stateless (no Redis/database needed)
-- Nonces encrypted with node's key_package
-- Message-bound (prevents reuse)
-- Secure and simple!
+**Unique approach:** Deterministic DKG with master seeds
+- Per-user Taproot addresses via passphrase-based DKG
+- Recoverable from master seeds + passphrase list
+- RocksDB cache (optional, can rebuild)
+- Use via frost-aggregator (recommended!)
 
-See **[FROST_COMPLETE_EXAMPLE.md](../FROST_COMPLETE_EXAMPLE.md)** for full usage guide.
+See **[FROST.md](../FROST.md)** and **[frost-aggregator/README.md](../frost-aggregator/README.md)** for full usage guide.
 
 ## Key Advantages Over Traditional Multisig
 

@@ -56,5 +56,5 @@ test-multisig:
 
 test-frost:
 	@echo "Testing FROST aggregator API..."
-	curl -s 'http://127.0.0.1:5000/health' | jq .
+	curl -s 'http://127.0.0.1:6000/health' | jq .
 

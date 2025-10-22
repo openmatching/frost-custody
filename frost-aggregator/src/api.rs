@@ -1,7 +1,6 @@
 use poem_openapi::param::Query;
 use poem_openapi::payload::Json;
 use poem_openapi::{ApiResponse, Object, OpenApi};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::config::AggregatorConfig;
@@ -81,6 +80,22 @@ pub struct GenerateAddressResponse {
     pub passphrase: String,
 }
 
+#[derive(Debug, Object)]
+pub struct SignPsbtRequest {
+    /// Base64-encoded PSBT
+    pub psbt: String,
+    /// Passphrases for each input (one per input, in order)
+    pub passphrases: Vec<String>,
+}
+
+#[derive(Debug, Object)]
+pub struct SignPsbtResponse {
+    /// Signed PSBT (base64-encoded)
+    pub psbt: String,
+    /// Number of inputs signed
+    pub inputs_signed: usize,
+}
+
 #[derive(ApiResponse)]
 pub enum SignResult {
     #[oai(status = 200)]
@@ -103,6 +118,16 @@ pub enum GenerateAddressResult {
 pub enum AddressResult {
     #[oai(status = 200)]
     Ok(Json<AddressResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+#[derive(ApiResponse)]
+pub enum SignPsbtResult {
+    #[oai(status = 200)]
+    Ok(Json<SignPsbtResponse>),
+    #[oai(status = 400)]
+    BadRequest(Json<ErrorResponse>),
     #[oai(status = 500)]
     InternalError(Json<ErrorResponse>),
 }
@@ -184,6 +209,43 @@ impl Api {
                 tracing::error!("Failed to get address: {}", e);
                 AddressResult::InternalError(Json(ErrorResponse {
                     error: format!("Address not found. Use POST /api/address/generate to create new address via DKG: {}", e),
+                }))
+            }
+        }
+    }
+
+    /// Sign PSBT with FROST threshold signatures (Taproot key-path spend)
+    #[oai(path = "/api/sign/psbt", method = "post")]
+    async fn sign_psbt(&self, req: Json<SignPsbtRequest>) -> SignPsbtResult {
+        let psbt_b64 = req.0.psbt;
+        let passphrases = req.0.passphrases;
+
+        tracing::info!(
+            "Received PSBT signing request with {} passphrases",
+            passphrases.len()
+        );
+
+        // Orchestrate PSBT signing
+        match frost_client::sign_psbt(
+            &psbt_b64,
+            &passphrases,
+            &self.config.signer_nodes,
+            self.config.threshold,
+        )
+        .await
+        {
+            Ok((signed_psbt_b64, inputs_signed)) => {
+                tracing::info!("Successfully signed {} inputs", inputs_signed);
+
+                SignPsbtResult::Ok(Json(SignPsbtResponse {
+                    psbt: signed_psbt_b64,
+                    inputs_signed,
+                }))
+            }
+            Err(e) => {
+                tracing::error!("PSBT signing failed: {}", e);
+                SignPsbtResult::InternalError(Json(ErrorResponse {
+                    error: format!("Failed to sign PSBT: {}", e),
                 }))
             }
         }
