@@ -1,4 +1,4 @@
-.PHONY: help build up-multisig up-frost up-all down logs clean
+.PHONY: help build up-multisig up-frost up-all down logs clean clippy test
 
 help:
 	@echo "Consensus Ring - Bitcoin Threshold Signing"
@@ -10,6 +10,8 @@ help:
 	@echo "  make up-all       Run both multisig and FROST"
 	@echo "  make down         Stop all services"
 	@echo "  make logs         View logs"
+	@echo "  make clippy       Run clippy linter (strict)"
+	@echo "  make test         Run all tests"
 	@echo "  make clean        Stop and remove everything"
 	@echo ""
 	@echo "Quick start:"
@@ -57,4 +59,12 @@ test-multisig:
 test-frost:
 	@echo "Testing FROST aggregator API..."
 	curl -s 'http://127.0.0.1:6000/health' | jq .
+
+clippy:
+	@echo "Running clippy on workspace (warnings as errors)..."
+	cargo clippy --workspace --all-targets -- -D warnings
+
+test:
+	@echo "Running all tests..."
+	cargo test --workspace
 

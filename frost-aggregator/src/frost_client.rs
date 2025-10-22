@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
+use base64::prelude::*;
 use bitcoin::psbt::Psbt;
 use bitcoin::sighash::{Prevouts, SighashCache, TapSighashType};
 use bitcoin::taproot::Signature as TaprootSignature;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 
 use crate::api::NodeHealthStatus;
 
@@ -18,6 +18,7 @@ struct Round1Response {
     identifier: String,
     commitments: String,
     encrypted_nonces: String,
+    #[allow(dead_code)]
     node_index: u16,
 }
 
@@ -240,7 +241,10 @@ pub async fn sign_psbt(
     threshold: usize,
 ) -> Result<(String, usize)> {
     // Decode PSBT from base64
-    let mut psbt = Psbt::from_str(psbt_b64).context("Invalid base64 PSBT")?;
+    let psbt_bytes = BASE64_STANDARD
+        .decode(psbt_b64)
+        .context("Invalid base64 encoding")?;
+    let mut psbt = Psbt::deserialize(&psbt_bytes).context("Invalid PSBT format")?;
 
     let num_inputs = psbt.unsigned_tx.input.len();
 
@@ -333,7 +337,7 @@ pub async fn sign_psbt(
     }
 
     // Serialize signed PSBT back to base64
-    let signed_psbt_b64 = psbt.to_string();
+    let signed_psbt_b64 = BASE64_STANDARD.encode(psbt.serialize());
 
     tracing::info!("✅ PSBT fully signed: {} inputs", num_inputs);
 

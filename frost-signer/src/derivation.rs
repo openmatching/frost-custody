@@ -28,7 +28,7 @@ pub fn dkg_part1(
 )> {
     let mut rng = derive_dkg_rng(master_seed, passphrase);
 
-    let participant_id = frost::Identifier::try_from((node_index + 1) as u16)
+    let participant_id = frost::Identifier::try_from(node_index + 1)
         .context("Failed to create participant identifier")?;
 
     let (secret_package, package) = frost::keys::dkg::part1(

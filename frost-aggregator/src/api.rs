@@ -12,6 +12,8 @@ pub struct Api {
 
 #[derive(Debug, Object)]
 pub struct SignRequest {
+    /// Passphrase for loading the correct FROST shares
+    pub passphrase: String,
     /// Message to sign (hex-encoded, e.g., Bitcoin sighash)
     pub message: String,
 }
@@ -137,6 +139,7 @@ impl Api {
     /// Sign message with FROST threshold (orchestrates 3-round protocol)
     #[oai(path = "/api/sign", method = "post")]
     async fn sign(&self, req: Json<SignRequest>) -> SignResult {
+        let passphrase = req.0.passphrase;
         let message = req.0.message;
 
         tracing::info!(
@@ -144,10 +147,9 @@ impl Api {
             &message[..16.min(message.len())]
         );
 
-        // Note: Basic message signing doesn't have passphrase context, use empty string
-        // For PSBT signing with passphrases, use /api/sign/psbt endpoint
+        // Sign with passphrase-specific FROST shares
         match frost_client::sign_message(
-            "",
+            &passphrase,
             &message,
             &self.config.signer_nodes,
             self.config.threshold,

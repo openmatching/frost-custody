@@ -45,6 +45,7 @@ struct DkgFinalizeRequest {
 
 #[derive(Deserialize)]
 struct DkgFinalizeResponse {
+    #[allow(dead_code)]
     success: bool,
     address: String,
 }

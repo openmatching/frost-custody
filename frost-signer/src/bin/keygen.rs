@@ -15,12 +15,12 @@ fn main() -> Result<()> {
     println!();
 
     // Generate keys using trusted dealer
-    let mut rng = OsRng;
+    let rng = OsRng;
     let (shares, pubkey_package) = frost::keys::generate_with_dealer(
         max_signers,
         min_signers,
         frost::keys::IdentifierList::Default,
-        &mut rng,
+        rng,
     )?;
 
     println!("Generated {} key shares\n", shares.len());

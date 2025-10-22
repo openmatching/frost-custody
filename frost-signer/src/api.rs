@@ -31,6 +31,8 @@ pub struct CommitmentsRequest {
 
 #[derive(Debug, Object)]
 pub struct CommitmentsResponse {
+    /// FROST identifier (hex)
+    pub identifier: String,
     /// Signing commitments (hex)
     pub commitments: String,
     /// Encrypted nonces (return this in round2)
@@ -59,6 +61,8 @@ pub struct CommitmentEntry {
 
 #[derive(Debug, Object)]
 pub struct SignResponse {
+    /// FROST identifier (hex)
+    pub identifier: String,
     /// This node's signature share (hex)
     pub signature_share: String,
     /// Node index
@@ -257,7 +261,10 @@ impl Api {
         };
 
         match crate::signer::generate_commitments(&self.config, &req.passphrase) {
-            Ok((nonces, commitments)) => {
+            Ok((identifier, nonces, commitments)) => {
+                // Encode identifier
+                let identifier_hex = hex::encode(identifier.serialize());
+
                 // Serialize commitments
                 let commitments_json = serde_json::to_vec(&commitments).unwrap();
 
@@ -277,6 +284,7 @@ impl Api {
                 };
 
                 CommitmentsResult::Ok(Json(CommitmentsResponse {
+                    identifier: identifier_hex,
                     commitments: hex::encode(commitments_json),
                     encrypted_nonces,
                     node_index: self.config.node_index,
@@ -352,6 +360,22 @@ impl Api {
             commitments_map.insert(identifier, commitments);
         }
 
+        // Get our identifier from key package
+        let key_package = match self.config.share_storage.get_key_package(&req.passphrase) {
+            Ok(Some(kp)) => kp,
+            Ok(None) => {
+                return SignResult::InternalError(Json(ErrorResponse {
+                    error: "Key package not found for passphrase".to_string(),
+                }))
+            }
+            Err(e) => {
+                return SignResult::InternalError(Json(ErrorResponse {
+                    error: format!("Failed to get key package: {}", e),
+                }))
+            }
+        };
+        let identifier_hex = hex::encode(key_package.identifier().serialize());
+
         // Sign
         match crate::signer::sign_with_commitments(
             &self.config,
@@ -364,6 +388,7 @@ impl Api {
                 let share_json = serde_json::to_vec(&signature_share).unwrap();
 
                 SignResult::Ok(Json(SignResponse {
+                    identifier: identifier_hex,
                     signature_share: hex::encode(share_json),
                     node_index: self.config.node_index,
                 }))
@@ -567,14 +592,13 @@ impl Api {
                 };
 
             // Get sender identifier
-            let sender_id =
-                match frost_secp256k1_tr::Identifier::try_from((pkg.node_index + 1) as u16) {
-                    Ok(id) => id,
-                    Err(e) => {
-                        tracing::warn!("Invalid node index {}: {:?}", pkg.node_index, e);
-                        continue;
-                    }
-                };
+            let sender_id = match frost_secp256k1_tr::Identifier::try_from(pkg.node_index + 1) {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::warn!("Invalid node index {}: {:?}", pkg.node_index, e);
+                    continue;
+                }
+            };
 
             round1_packages.insert(sender_id, package);
         }
@@ -656,11 +680,10 @@ impl Api {
                     Err(_) => continue,
                 };
 
-            let sender_id =
-                match frost_secp256k1_tr::Identifier::try_from((pkg.node_index + 1) as u16) {
-                    Ok(id) => id,
-                    Err(_) => continue,
-                };
+            let sender_id = match frost_secp256k1_tr::Identifier::try_from(pkg.node_index + 1) {
+                Ok(id) => id,
+                Err(_) => continue,
+            };
 
             round1_packages.insert(sender_id, package);
         }
@@ -685,11 +708,10 @@ impl Api {
                 };
 
             // Use sender_index to identify who sent this package
-            let sender_id =
-                match frost_secp256k1_tr::Identifier::try_from((pkg.sender_index + 1) as u16) {
-                    Ok(id) => id,
-                    Err(_) => continue,
-                };
+            let sender_id = match frost_secp256k1_tr::Identifier::try_from(pkg.sender_index + 1) {
+                Ok(id) => id,
+                Err(_) => continue,
+            };
 
             round2_packages.insert(sender_id, package);
         }

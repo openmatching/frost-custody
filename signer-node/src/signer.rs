@@ -35,7 +35,7 @@ pub fn sign_psbt(
         // Derive private key from passphrase
         let privkey = config
             .derive_privkey(passphrase)
-            .context(format!("Failed to derive privkey for passphrase"))?;
+            .context("Failed to derive privkey for passphrase")?;
 
         // Try to sign this input
         match sign_input(&secp, &mut psbt, idx, &privkey) {

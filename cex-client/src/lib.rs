@@ -75,11 +75,7 @@ pub fn passphrase_to_derivation_path(passphrase: &str) -> DerivationPath {
 /// * `network` - Bitcoin network
 ///
 /// # Example
-/// ```
-/// let xpubs = vec![xpub0, xpub1, xpub2];
-/// let passphrase = uuid::Uuid::new_v4().to_string();
-/// let address = derive_multisig_address(&xpubs, &passphrase, Network::Bitcoin)?;
-/// ```
+/// See `examples/derive_address.rs` for complete usage example.
 pub fn derive_multisig_address(
     xpubs: &[Xpub],
     passphrase: &str,

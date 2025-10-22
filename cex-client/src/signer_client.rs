@@ -17,6 +17,7 @@ struct SignRequest {
 struct SignResponse {
     psbt: String,
     signed_count: usize,
+    #[allow(dead_code)]
     node_index: u8,
 }
 
@@ -44,7 +45,7 @@ impl SignerClient {
 
         let resp = self
             .client
-            .post(&format!("{}/api/sign", self.base_url))
+            .post(format!("{}/api/sign", self.base_url))
             .json(&req)
             .send()
             .context("Failed to send sign request")?;
@@ -72,16 +73,20 @@ impl SignerClient {
 ///
 /// # Example
 /// ```no_run
+/// use cex_client::signer_client::sign_with_threshold;
+///
 /// let signer_urls = vec![
 ///     "http://node0:3000".to_string(),
 ///     "http://node1:3000".to_string(),
 /// ];
+/// let psbt_base64 = "cHNidP8BAH...";
+/// let passphrases = vec!["passphrase1".to_string()];
 ///
 /// let signed_psbt = sign_with_threshold(
-///     &psbt_base64,
+///     psbt_base64,
 ///     &passphrases,
 ///     &signer_urls
-/// )?;
+/// ).unwrap();
 /// ```
 pub fn sign_with_threshold(
     psbt_base64: &str,

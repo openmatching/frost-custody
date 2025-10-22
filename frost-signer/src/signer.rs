@@ -6,12 +6,14 @@ use std::collections::BTreeMap;
 use crate::config::FrostNode;
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct SigningCommitments {
     pub identifier: String,
     pub commitments: String, // Hex-encoded
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct SignatureShare {
     pub identifier: String,
     pub share: String, // Hex-encoded
@@ -22,20 +24,20 @@ pub fn generate_commitments(
     config: &FrostNode,
     passphrase: &str,
 ) -> Result<(
+    frost::Identifier,
     frost::round1::SigningNonces,
     frost::round1::SigningCommitments,
 )> {
     let mut rng = rand::rngs::OsRng;
-    let (nonces, commitments) = frost::round1::commit(
-        config
-            .share_storage
-            .get_key_package(passphrase)?
-            .ok_or_else(|| anyhow::anyhow!("Key package not found for passphrase"))?
-            .signing_share(),
-        &mut rng,
-    );
+    let key_package = config
+        .share_storage
+        .get_key_package(passphrase)?
+        .ok_or_else(|| anyhow::anyhow!("Key package not found for passphrase"))?;
 
-    Ok((nonces, commitments))
+    let identifier = *key_package.identifier();
+    let (nonces, commitments) = frost::round1::commit(key_package.signing_share(), &mut rng);
+
+    Ok((identifier, nonces, commitments))
 }
 
 /// Round 2: Sign with nonces and other parties' commitments

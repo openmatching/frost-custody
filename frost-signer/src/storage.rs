@@ -81,6 +81,7 @@ impl ShareStorage {
     }
 
     /// Check if we have shares for this passphrase
+    #[allow(dead_code)]
     pub fn has_passphrase(&self, passphrase: &str) -> bool {
         let key = format!("keypackage:{}", passphrase);
         self.db.get(key.as_bytes()).ok().flatten().is_some()

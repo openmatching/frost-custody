@@ -11,6 +11,7 @@ pub struct FrostNodeClient {
 pub struct FrostSignerClient {
     node_urls: Vec<String>,
     threshold: usize, // Number of nodes needed (typically 2 for 2-of-3)
+    #[allow(dead_code)]
     client: reqwest::blocking::Client,
 }
 
@@ -20,11 +21,12 @@ struct Round1Request {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-struct Round1Response {
-    identifier: String,
-    commitments: String,
-    encrypted_nonces: String,
-    node_index: u16,
+pub struct Round1Response {
+    pub identifier: String,
+    pub commitments: String,
+    pub encrypted_nonces: String,
+    #[allow(dead_code)]
+    pub node_index: u16,
 }
 
 #[derive(Serialize)]
@@ -35,15 +37,15 @@ struct Round2Request {
 }
 
 #[derive(Serialize, Clone)]
-struct CommitmentEntry {
-    identifier: String,
-    commitments: String,
+pub struct CommitmentEntry {
+    pub identifier: String,
+    pub commitments: String,
 }
 
 #[derive(Deserialize, Debug)]
-struct Round2Response {
-    signature_share: String,
-    identifier: String,
+pub struct Round2Response {
+    pub signature_share: String,
+    pub identifier: String,
 }
 
 #[derive(Serialize)]
@@ -54,15 +56,15 @@ struct AggregateRequest {
 }
 
 #[derive(Serialize)]
-struct SignatureShareEntry {
-    identifier: String,
-    share: String,
+pub struct SignatureShareEntry {
+    pub identifier: String,
+    pub share: String,
 }
 
 #[derive(Deserialize, Debug)]
-struct AggregateResponse {
-    signature: String,
-    verified: bool,
+pub struct AggregateResponse {
+    pub signature: String,
+    pub verified: bool,
 }
 
 impl FrostNodeClient {
@@ -81,7 +83,7 @@ impl FrostNodeClient {
 
         let resp = self
             .client
-            .post(&format!("{}/api/frost/round1", self.base_url))
+            .post(format!("{}/api/frost/round1", self.base_url))
             .json(&req)
             .send()
             .context("Failed to send round1 request")?;
@@ -109,7 +111,7 @@ impl FrostNodeClient {
 
         let resp = self
             .client
-            .post(&format!("{}/api/frost/round2", self.base_url))
+            .post(format!("{}/api/frost/round2", self.base_url))
             .json(&req)
             .send()
             .context("Failed to send round2 request")?;
@@ -137,7 +139,7 @@ impl FrostNodeClient {
 
         let resp = self
             .client
-            .post(&format!("{}/api/frost/aggregate", self.base_url))
+            .post(format!("{}/api/frost/aggregate", self.base_url))
             .json(&req)
             .send()
             .context("Failed to send aggregate request")?;
@@ -160,14 +162,16 @@ impl FrostSignerClient {
     ///
     /// # Example
     /// ```
+    /// use cex_client::frost_client::FrostSignerClient;
+    ///
     /// let client = FrostSignerClient::new(
     ///     vec![
     ///         "http://node0:4000".to_string(),
     ///         "http://node1:4000".to_string(),
-    ///         "http://node2:4000".to_string(),
     ///     ],
     ///     2  // 2-of-3 threshold
     /// );
+    /// assert_eq!(client.threshold(), 2);
     /// ```
     pub fn new(node_urls: Vec<String>, threshold: usize) -> Self {
         Self {
