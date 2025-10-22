@@ -51,7 +51,6 @@ pub struct ServerConfig {
 pub struct FrostNode {
     pub network: Network,
     pub node_index: u16,
-    pub identifier: frost::Identifier,
     pub share_storage: Arc<ShareStorage>,
     /// Master seed for deterministic derivation (BACKUP THIS!)
     pub master_seed: Vec<u8>,
@@ -73,33 +72,6 @@ impl FrostNode {
             _ => anyhow::bail!("Invalid network type: {}", config.network.network_type),
         };
 
-        // Decode key package
-        let key_package_bytes = hex::decode(&config.frost.key_package_hex)
-            .context("Failed to decode key_package_hex")?;
-        let key_package: frost::keys::KeyPackage = serde_json::from_slice(&key_package_bytes)
-            .context("Failed to deserialize key package")?;
-
-        // Decode public key package
-        let pubkey_package_bytes = hex::decode(&config.frost.pubkey_package_hex)
-            .context("Failed to decode pubkey_package_hex")?;
-        let pubkey_package: frost::keys::PublicKeyPackage =
-            serde_json::from_slice(&pubkey_package_bytes)
-                .context("Failed to deserialize pubkey package")?;
-
-        let identifier = *key_package.identifier();
-
-        tracing::info!(
-            "Loaded FROST signer node {} for network {:?}",
-            config.frost.node_index,
-            network
-        );
-        tracing::info!("FROST identifier: {:?}", identifier);
-        let group_pubkey_bytes = pubkey_package
-            .verifying_key()
-            .serialize()
-            .map_err(|e| anyhow::anyhow!("Failed to serialize group public key: {:?}", e))?;
-        tracing::info!("Group public key: {}", hex::encode(&group_pubkey_bytes));
-
         // Decode master seed
         let master_seed = hex::decode(&config.frost.master_seed_hex)
             .context("Failed to decode master_seed_hex")?;
@@ -113,7 +85,6 @@ impl FrostNode {
         Ok(Self {
             network,
             node_index: config.frost.node_index,
-            identifier,
             share_storage: Arc::new(share_storage),
             master_seed,
         })

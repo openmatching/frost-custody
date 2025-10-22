@@ -31,8 +31,6 @@ pub struct CommitmentsRequest {
 
 #[derive(Debug, Object)]
 pub struct CommitmentsResponse {
-    /// This node's identifier
-    pub identifier: String,
     /// Signing commitments (hex)
     pub commitments: String,
     /// Encrypted nonces (return this in round2)
@@ -63,8 +61,8 @@ pub struct CommitmentEntry {
 pub struct SignResponse {
     /// This node's signature share (hex)
     pub signature_share: String,
-    /// Node identifier
-    pub identifier: String,
+    /// Node index
+    pub node_index: u16,
 }
 
 #[derive(Debug, Object)]
@@ -278,7 +276,6 @@ impl Api {
                 };
 
                 CommitmentsResult::Ok(Json(CommitmentsResponse {
-                    identifier: format!("{:?}", self.config.identifier),
                     commitments: hex::encode(commitments_json),
                     encrypted_nonces,
                     node_index: self.config.node_index,
@@ -367,7 +364,7 @@ impl Api {
 
                 SignResult::Ok(Json(SignResponse {
                     signature_share: hex::encode(share_json),
-                    identifier: format!("{:?}", self.config.identifier),
+                    node_index: self.config.node_index,
                 }))
             }
             Err(e) => SignResult::InternalError(Json(ErrorResponse {
