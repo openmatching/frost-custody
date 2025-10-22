@@ -14,10 +14,10 @@ pub struct Api {
 pub struct SignRequest {
     /// Base64-encoded PSBT
     pub psbt: String,
-    /// User IDs for key derivation (one per input).
+    /// Passphrases for key derivation (one per input).
     /// Each element corresponds to a PSBT input by index.
-    /// Required: CEX must provide the user_id for each input.
-    pub derivation_ids: Vec<u64>,
+    /// Use UUIDs, random strings, or hashed user identifiers (NOT sequential IDs!).
+    pub passphrases: Vec<String>,
 }
 
 #[derive(Debug, Object)]
@@ -32,8 +32,8 @@ pub struct SignResponse {
 
 #[derive(Debug, Object)]
 pub struct PubkeyResponse {
-    /// User ID
-    pub user_id: u64,
+    /// Passphrase (returned for confirmation)
+    pub passphrase: String,
     /// Compressed public key (hex)
     pub pubkey: String,
     /// This node's index
@@ -42,8 +42,8 @@ pub struct PubkeyResponse {
 
 #[derive(Debug, Object)]
 pub struct AddressResponse {
-    /// User ID
-    pub user_id: u64,
+    /// Passphrase (returned for confirmation)
+    pub passphrase: String,
     /// 2-of-3 multisig address
     pub address: String,
     /// Script type
@@ -99,16 +99,16 @@ impl Api {
     async fn sign(&self, req: Json<SignRequest>) -> SignResult {
         let req = req.0;
 
-        // Validate derivation_ids
-        if req.derivation_ids.is_empty() {
+        // Validate passphrases
+        if req.passphrases.is_empty() {
             return SignResult::BadRequest(Json(ErrorResponse {
-                error: "derivation_ids cannot be empty - must provide user_id for each input"
+                error: "passphrases cannot be empty - must provide passphrase for each input"
                     .to_string(),
             }));
         }
 
         // Sign PSBT
-        match signer::sign_psbt(&self.config, &req.psbt, &req.derivation_ids) {
+        match signer::sign_psbt(&self.config, &req.psbt, &req.passphrases) {
             Ok((signed_psbt, signed_count)) => {
                 tracing::info!(
                     "Signed {} inputs for node {}",
@@ -131,14 +131,14 @@ impl Api {
         }
     }
 
-    /// Get public key for a user ID
+    /// Get public key for a passphrase
     #[oai(path = "/api/pubkey", method = "get")]
-    async fn get_pubkey(&self, id: Query<u64>) -> PubkeyResult {
-        let user_id = id.0;
+    async fn get_pubkey(&self, passphrase: Query<String>) -> PubkeyResult {
+        let passphrase_str = passphrase.0;
 
-        match self.config.derive_pubkey(user_id) {
+        match self.config.derive_pubkey(&passphrase_str) {
             Ok(pubkey) => PubkeyResult::Ok(Json(PubkeyResponse {
-                user_id,
+                passphrase: passphrase_str,
                 pubkey: pubkey.to_string(),
                 node_index: self.config.node_index,
             })),
@@ -151,14 +151,14 @@ impl Api {
         }
     }
 
-    /// Get multisig address for a user ID
+    /// Get multisig address for a passphrase
     #[oai(path = "/api/address", method = "get")]
-    async fn get_address(&self, id: Query<u64>) -> AddressResult {
-        let user_id = id.0;
+    async fn get_address(&self, passphrase: Query<String>) -> AddressResult {
+        let passphrase_str = passphrase.0;
 
-        match signer::derive_multisig_address(&self.config, user_id) {
+        match signer::derive_multisig_address(&self.config, &passphrase_str) {
             Ok(address) => AddressResult::Ok(Json(AddressResponse {
-                user_id,
+                passphrase: passphrase_str,
                 address,
                 script_type: "wsh_sortedmulti(2,3)".to_string(),
             })),

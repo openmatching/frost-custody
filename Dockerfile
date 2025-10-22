@@ -2,15 +2,20 @@ FROM rust:bullseye AS builder
 
 WORKDIR /app
 COPY . .
-RUN cargo build --release
+
+# Build all binaries in one go
+RUN cargo build --release --workspace
 
 FROM debian:bullseye-slim
 
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/consensus-ring /usr/local/bin/consensus-ring
+# Copy all binaries
+COPY --from=builder /app/target/release/signer-node /usr/local/bin/
+COPY --from=builder /app/target/release/frost-signer /usr/local/bin/
+COPY --from=builder /app/target/release/frost-aggregator /usr/local/bin/
 
-ENV CONFIG_PATH=/etc/consensus-ring/config.toml
+ENV CONFIG_PATH=/etc/config.toml
 
-CMD ["consensus-ring"]
-
+# Default entrypoint (can be overridden)
+ENTRYPOINT ["signer-node"]

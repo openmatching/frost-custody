@@ -1,0 +1,16 @@
+[frost]
+# FROST signer node URLs (internal private network)
+signer_nodes = [
+    "http://frost-node0:4000",
+    "http://frost-node1:4000",
+    "http://frost-node2:4000",
+]
+
+# Threshold (number of nodes needed to sign)
+threshold = 2
+
+[server]
+# Aggregator listens on this (exposed to CEX backend)
+host = "0.0.0.0"
+port = 5000
+

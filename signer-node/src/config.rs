@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use bip39::Mnemonic;
 use bitcoin::bip32::{DerivationPath, Xpriv, Xpub};
+use bitcoin::hashes::{sha256, Hash};
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::Network;
 use serde::Deserialize;
@@ -109,13 +110,13 @@ impl SignerNode {
         })
     }
 
-    pub fn derive_pubkey(&self, user_id: u64) -> Result<bitcoin::PublicKey> {
+    pub fn derive_pubkey(&self, passphrase: &str) -> Result<bitcoin::PublicKey> {
         let secp = Secp256k1::new();
 
-        // Derive child key at non-hardened path
-        let path = DerivationPath::from_str(&format!("m/{}", user_id))
-            .context("Invalid derivation path")?;
+        // Convert passphrase to derivation path (9 levels for full 256-bit space)
+        let path = Self::passphrase_to_derivation_path(passphrase);
 
+        // Standard BIP32 derivation (CEX can do this with xpub!)
         let child_xpub = self
             .account_xpub
             .derive_pub(&secp, &path)
@@ -124,13 +125,13 @@ impl SignerNode {
         Ok(bitcoin::PublicKey::new(child_xpub.public_key))
     }
 
-    pub fn derive_privkey(&self, user_id: u64) -> Result<bitcoin::PrivateKey> {
+    pub fn derive_privkey(&self, passphrase: &str) -> Result<bitcoin::PrivateKey> {
         let secp = Secp256k1::new();
 
-        // Derive child key at non-hardened path
-        let path = DerivationPath::from_str(&format!("m/{}", user_id))
-            .context("Invalid derivation path")?;
+        // Convert passphrase to derivation path (9 levels for full 256-bit space)
+        let path = Self::passphrase_to_derivation_path(passphrase);
 
+        // Standard BIP32 derivation
         let child_xprv = self
             .account_xprv
             .derive_priv(&secp, &path)
@@ -140,6 +141,43 @@ impl SignerNode {
             child_xprv.private_key,
             self.network,
         ))
+    }
+
+    pub fn passphrase_to_derivation_path(passphrase: &str) -> DerivationPath {
+        // Hash passphrase to get 256 bits
+        let hash = sha256::Hash::hash(passphrase.as_bytes());
+        let bytes = hash.as_byte_array();
+
+        // Split into 9 chunks for non-hardened derivation path
+        // Each chunk is ~28-31 bits, all < 2^31 (non-hardened)
+        let indices = [
+            u32::from_be_bytes([0, bytes[0], bytes[1], bytes[2]]), // 24 bits
+            u32::from_be_bytes([0, bytes[3], bytes[4], bytes[5]]), // 24 bits
+            u32::from_be_bytes([0, bytes[6], bytes[7], bytes[8]]), // 24 bits
+            u32::from_be_bytes([0, bytes[9], bytes[10], bytes[11]]), // 24 bits
+            u32::from_be_bytes([0, bytes[12], bytes[13], bytes[14]]), // 24 bits
+            u32::from_be_bytes([0, bytes[15], bytes[16], bytes[17]]), // 24 bits
+            u32::from_be_bytes([0, bytes[18], bytes[19], bytes[20]]), // 24 bits
+            u32::from_be_bytes([0, bytes[21], bytes[22], bytes[23]]), // 24 bits
+            u32::from_be_bytes([0, bytes[24], bytes[25], bytes[26]]), // 24 bits
+            u32::from_be_bytes([0, bytes[27], bytes[28], bytes[29]]), // 24 bits (extra for safety)
+        ];
+
+        // Build path: m/i0/i1/i2/i3/i4/i5/i6/i7/i8
+        let path_str = format!(
+            "m/{}/{}/{}/{}/{}/{}/{}/{}/{}",
+            indices[0],
+            indices[1],
+            indices[2],
+            indices[3],
+            indices[4],
+            indices[5],
+            indices[6],
+            indices[7],
+            indices[8]
+        );
+
+        DerivationPath::from_str(&path_str).expect("Valid derivation path")
     }
 }
 

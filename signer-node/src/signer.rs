@@ -4,14 +4,13 @@ use bitcoin::hashes::Hash;
 use bitcoin::psbt::Psbt;
 use bitcoin::secp256k1::{Message, Secp256k1};
 use bitcoin::sighash::{Prevouts, SighashCache};
-use std::str::FromStr;
 
 use crate::config::SignerNode;
 
 pub fn sign_psbt(
     config: &SignerNode,
     psbt_str: &str,
-    derivation_ids: &[u64],
+    passphrases: &[String],
 ) -> Result<(String, usize)> {
     // Decode PSBT from base64
     let psbt_bytes = BASE64_STANDARD
@@ -22,27 +21,27 @@ pub fn sign_psbt(
     let secp = Secp256k1::new();
     let mut signed_count = 0;
 
-    // Sign each input with the provided derivation_id
-    for (idx, derivation_id) in derivation_ids.iter().enumerate() {
+    // Sign each input with the provided passphrase
+    for (idx, passphrase) in passphrases.iter().enumerate() {
         if idx >= psbt.inputs.len() {
             tracing::warn!(
-                "Derivation ID index {} exceeds PSBT inputs count {}",
+                "Passphrase index {} exceeds PSBT inputs count {}",
                 idx,
                 psbt.inputs.len()
             );
             break;
         }
 
-        // Derive private key for this user
+        // Derive private key from passphrase
         let privkey = config
-            .derive_privkey(*derivation_id)
-            .context(format!("Failed to derive privkey for id {}", derivation_id))?;
+            .derive_privkey(passphrase)
+            .context(format!("Failed to derive privkey for passphrase"))?;
 
         // Try to sign this input
         match sign_input(&secp, &mut psbt, idx, &privkey) {
             Ok(_) => {
                 signed_count += 1;
-                tracing::debug!("Signed input {} for derivation_id {}", idx, derivation_id);
+                tracing::debug!("Signed input {} with passphrase", idx);
             }
             Err(e) => {
                 tracing::warn!("Failed to sign input {}: {}", idx, e);
@@ -108,15 +107,15 @@ fn sign_input(
     Ok(())
 }
 
-pub fn derive_multisig_address(config: &SignerNode, user_id: u64) -> Result<String> {
+pub fn derive_multisig_address(config: &SignerNode, passphrase: &str) -> Result<String> {
     let secp = Secp256k1::new();
 
-    // Derive child pubkeys from all 3 xpubs
+    // Convert passphrase to 9-level derivation path (full 256-bit space, standard BIP32)
+    let path = SignerNode::passphrase_to_derivation_path(passphrase);
+
+    // Derive child pubkeys from all 3 xpubs (standard BIP32!)
     let mut pubkeys = Vec::new();
     for xpub in &config.all_xpubs {
-        let path = bitcoin::bip32::DerivationPath::from_str(&format!("m/{}", user_id))
-            .context("Invalid derivation path")?;
-
         let child_xpub = xpub
             .derive_pub(&secp, &path)
             .context("Failed to derive child pubkey")?;

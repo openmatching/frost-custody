@@ -1,9 +1,15 @@
-[package]
-name = "consensus-ring"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = ["signer-node", "frost-signer", "frost-aggregator", "cex-client"]
+resolver = "2"
 
-[dependencies]
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+authors = ["Consensus Ring Contributors"]
+license = "MIT"
+
+[workspace.dependencies]
+# Web framework
 poem = "3"
 poem-openapi = { version = "5", features = ["rapidoc"] }
 tokio = { version = "1", features = ["full"] }
@@ -18,13 +24,10 @@ bitcoin = { version = "0.32", features = ["serde", "base64"] }
 bip39 = "2.0"
 base64 = "0.22"
 
-[dev-dependencies]
-reqwest = { version = "0.12", features = ["json"] }
+# FROST
+frost-secp256k1 = "2.0.0"
+rand = "0.8"
 
 [profile.release]
 opt-level = 3
 lto = true
-
-[[example]]
-name = "client"
-path = "examples/client.rs"

@@ -1,27 +1,100 @@
 services:
-  node0:
+  # Traditional Multisig Nodes (ports 3000-3002)
+  multisig-node0:
+    image: consensus-ring:latest
     build: .
-    container_name: signer-node-0
+    container_name: multisig-node-0
+    entrypoint: ["signer-node"]
     volumes:
-      - ./config-node0.toml:/etc/consensus-ring/config.toml:ro
+      - ./config-node0.toml:/etc/config.toml:ro
     ports:
       - "3000:3000"
     restart: unless-stopped
+    networks:
+      - signer-net
 
-  node1:
-    build: .
-    container_name: signer-node-1
+  multisig-node1:
+    image: consensus-ring:latest
+    container_name: multisig-node-1
+    entrypoint: ["signer-node"]
     volumes:
-      - ./config-node1.toml:/etc/consensus-ring/config.toml:ro
+      - ./config-node1.toml:/etc/config.toml:ro
     ports:
       - "3001:3000"
     restart: unless-stopped
+    networks:
+      - signer-net
 
-  node2:
-    build: .
-    container_name: signer-node-2
+  multisig-node2:
+    image: consensus-ring:latest
+    container_name: multisig-node-2
+    entrypoint: ["signer-node"]
     volumes:
-      - ./config-node2.toml:/etc/consensus-ring/config.toml:ro
+      - ./config-node2.toml:/etc/config.toml:ro
     ports:
       - "3002:3000"
     restart: unless-stopped
+    networks:
+      - signer-net
+
+  # FROST Signer Nodes (ports 4000-4002, internal only)
+  frost-node0:
+    image: consensus-ring:latest
+    container_name: frost-signer-node-0
+    entrypoint: ["frost-signer"]
+    volumes:
+      - ./frost-config-node0.toml:/etc/config.toml:ro
+    networks:
+      - frost-internal
+    # No external ports - only aggregator can reach
+
+  frost-node1:
+    image: consensus-ring:latest
+    container_name: frost-signer-node-1
+    entrypoint: ["frost-signer"]
+    volumes:
+      - ./frost-config-node1.toml:/etc/config.toml:ro
+    networks:
+      - frost-internal
+
+  frost-node2:
+    image: consensus-ring:latest
+    container_name: frost-signer-node-2
+    entrypoint: ["frost-signer"]
+    volumes:
+      - ./frost-config-node2.toml:/etc/config.toml:ro
+    networks:
+      - frost-internal
+
+  # FROST Aggregator (port 5000, exposed to CEX)
+  frost-aggregator:
+    image: consensus-ring:latest
+    container_name: frost-aggregator
+    entrypoint: ["frost-aggregator"]
+    volumes:
+      - ./aggregator-config.toml:/etc/config.toml:ro
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    networks:
+      - frost-internal
+      - cex-network
+    depends_on:
+      - frost-node0
+      - frost-node1
+      - frost-node2
+
+networks:
+  signer-net:
+    driver: bridge
+  frost-internal:
+    driver: bridge
+    internal: true # No external access - signers isolated!
+  cex-network:
+    driver: bridge
+    # CEX backend connects here
+# Profiles for different deployment scenarios
+# Run specific services:
+#   docker-compose up multisig-node0 multisig-node1 multisig-node2  # Traditional only
+#   docker-compose up frost-node0 frost-node1 frost-node2 frost-aggregator  # FROST only
+#   docker-compose up  # All services
