@@ -1,103 +1,126 @@
-# FROST Threshold Signatures
+# FROST Threshold Signatures with DKG
 
-## Quick Start
+Bitcoin 2-of-3 threshold Schnorr signatures using FROST protocol with deterministic key generation.
+
+## Overview
+
+**FROST provides:**
+- ✅ Per-user Taproot addresses (bc1p...)
+- ✅ 56% smaller transactions (~110 vbytes vs ~250 vbytes)
+- ✅ Better privacy (looks like normal wallet)
+- ✅ Seed-recoverable shares (from master seeds + passphrases)
+
+---
+
+## How It Works
+
+### Deterministic DKG Per Passphrase
+
+**Each node has unique master seed (backup once):**
+```
+Node 0: master_seed_0 (from mnemonic)
+Node 1: master_seed_1 (different mnemonic)
+Node 2: master_seed_2 (different mnemonic)
+```
+
+**For each passphrase, nodes run DKG with deterministic RNG:**
+```
+Node 0: rng = ChaCha20(sha256(master_seed_0 + passphrase))
+Node 1: rng = ChaCha20(sha256(master_seed_1 + passphrase))
+Node 2: rng = ChaCha20(sha256(master_seed_2 + passphrase))
+
+Run DKG protocol → share₀, share₁, share₂
+Store in RocksDB (cache)
+```
+
+**Result:**
+- Different passphrases → Different addresses
+- Shares are deterministic (recoverable!)
+- Real threshold security (each node only knows its seed)
+
+---
+
+## Deploy
 
 ```bash
-# Generate FROST keys
-cargo run --bin frost-keygen
-
-# Configure each node with generated keys
-# See frost-signer/frost-config.toml.example
-
-# Run node
-CONFIG_PATH=frost-config-node0.toml cargo run --bin frost-signer
+make up-frost
 ```
 
-## API Usage
+**This starts:**
+- 3 FROST signer nodes (internal, isolated)
+- 1 FROST aggregator (port 5000, exposed to CEX)
 
-### Get Taproot Address
+---
+
+## API
+
+### Generate Address (Triggers DKG)
 
 ```bash
-curl 'http://127.0.0.1:4000/api/address?passphrase=550e8400-e29b-41d4-a716-446655440000'
+POST http://127.0.0.1:5000/api/address/generate
+{
+  "passphrase": "550e8400-e29b-41d4-a716-446655440000"
+}
+
+Response:
+{
+  "address": "bc1p...",
+  "passphrase": "550e8400-e29b-41d4-a716-446655440000"
+}
 ```
 
-### Sign Message (3-Round Protocol)
+**Process:**
+1. Aggregator calls all 3 nodes for DKG round1
+2. Nodes generate packages with deterministic RNG
+3. Round2: Nodes create personalized packages
+4. Finalize: Nodes store shares in RocksDB
+5. Return unique Taproot address
 
-**Round 1:**
+### Sign Message
+
 ```bash
-curl -X POST http://127.0.0.1:4000/api/frost/round1 -d '{"message":"deadbeef"}'
-→ Returns: commitments + encrypted_nonces
+POST http://127.0.0.1:5000/api/sign
+{
+  "message": "deadbeef..."  # Bitcoin sighash
+}
 ```
 
-**Round 2:**
+**Aggregator orchestrates 3-round FROST signing automatically.**
+
+---
+
+## Recovery
+
+**What to backup:**
+- 3 master seeds (mnemonics) ✅ Critical
+- List of all passphrases (CEX database) ✅ Critical
+- RocksDB databases ⚠️ Optional (can rebuild from #1 + #2)
+
+**If RocksDB lost:**
 ```bash
-curl -X POST http://127.0.0.1:4000/api/frost/round2 -d '{
-  "message":"deadbeef",
-  "encrypted_nonces":"...",
-  "all_commitments":[...]
-}'
-→ Returns: signature_share
+# Re-run DKG for all passphrases
+for passphrase in passphrase_list:
+    POST /api/address/generate {passphrase}
+    
+# Rebuilds cache from master seeds
 ```
 
-**Round 3:**
-```bash
-curl -X POST http://127.0.0.1:4000/api/frost/aggregate -d '{
-  "message":"deadbeef",
-  "all_commitments":[...],
-  "signature_shares":[...]
-}'
-→ Returns: final_signature
-```
+---
 
-## CEX Integration (Production)
+## vs Traditional Multisig
 
-**Recommended: Use FROST aggregator (simpler and more secure!)**
+| Feature                       | Multisig    | FROST DKG                     |
+| ----------------------------- | ----------- | ----------------------------- |
+| **Size**                      | ~250 vbytes | ~110 vbytes                   |
+| **Fee**                       | 12,500 sats | 5,500 sats (**56% cheaper**)  |
+| **Annual cost** (1000 tx/day) | $2.7M       | $1.2M (**$1.5M savings**)     |
+| **Recovery**                  | 3 mnemonics | 3 mnemonics + passphrase list |
 
-```rust
-// CEX backend just calls aggregator (1 endpoint)
-let signature = reqwest::Client::new()
-    .post("http://aggregator:5000/api/sign")
-    .json(&json!({"message": sighash_hex}))
-    .send()
-    .await?
-    .json::<SignResponse>()
-    .await?
-    .signature;
+**FROST saves $1.5M/year at scale!** 🚀
 
-// Done! Aggregator handles all FROST complexity
-```
+---
 
-**Alternative: Direct to signers (for advanced use)**
+## See Also
 
-```rust
-use cex_client::FrostSignerClient;
-
-let frost = FrostSignerClient::new(
-    vec!["http://node0:4000".into(), "http://node1:4000".into()],
-    2
-);
-let signed_tx = frost.sign_transaction(tx, &prevouts)?;
-```
-
-**Recommendation: Use aggregator for production (better security).**
-
-**Example:**
-```bash
-cargo run --example frost_aggregator_example
-```
-
-**See [frost-aggregator/README.md](frost-aggregator/README.md)**
-
-## Advantages vs Traditional Multisig
-
-| Feature              | Multisig              | FROST                     |
-| -------------------- | --------------------- | ------------------------- |
-| **Transaction size** | ~250 vbytes           | ~110 vbytes (56% smaller) |
-| **Fee**              | 12,500 sats           | 5,500 sats (56% cheaper)  |
-| **Privacy**          | Visible multisig      | Looks like normal wallet  |
-| **Witness**          | 2 ECDSA sigs + script | 1 Schnorr sig             |
-
-**Annual savings (1000 tx/day): $1.5M** 🚀
-
-**See frost-signer/README.md for technical details.**
-
+- [frost-aggregator/README.md](frost-aggregator/README.md) - Aggregator details
+- [frost-signer/README.md](frost-signer/README.md) - Signer technical details

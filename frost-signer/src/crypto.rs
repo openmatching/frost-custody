@@ -2,10 +2,9 @@ use anyhow::{Context, Result};
 use bitcoin::hashes::{sha256, Hash};
 
 /// Encrypt nonces with key package secret for secure client-side storage
-pub fn encrypt_nonces(nonces_json: &[u8], message: &[u8], key_package_hex: &str) -> Result<String> {
+pub fn encrypt_nonces(nonces_json: &[u8], message: &[u8], master_seed: &[u8]) -> Result<String> {
     // Use key_package as encryption key
-    let key_bytes = hex::decode(key_package_hex)?;
-    let key_hash = sha256::Hash::hash(&key_bytes);
+    let key_hash = sha256::Hash::hash(master_seed);
 
     // Bind encryption to message (prevents reuse with different message)
     let message_hash = sha256::Hash::hash(message);
@@ -24,11 +23,7 @@ pub fn encrypt_nonces(nonces_json: &[u8], message: &[u8], key_package_hex: &str)
 }
 
 /// Decrypt nonces and verify message binding
-pub fn decrypt_nonces(
-    encrypted_hex: &str,
-    message: &[u8],
-    key_package_hex: &str,
-) -> Result<Vec<u8>> {
+pub fn decrypt_nonces(encrypted_hex: &str, message: &[u8], master_seed: &[u8]) -> Result<Vec<u8>> {
     let encrypted = hex::decode(encrypted_hex).context("Invalid encrypted nonce hex")?;
 
     if encrypted.len() < 32 {
@@ -46,8 +41,7 @@ pub fn decrypt_nonces(
     }
 
     // Decrypt
-    let key_bytes = hex::decode(key_package_hex)?;
-    let key_hash = sha256::Hash::hash(&key_bytes);
+    let key_hash = sha256::Hash::hash(master_seed);
 
     let mut decrypted = Vec::new();
     for (i, &byte) in ciphertext.iter().enumerate() {

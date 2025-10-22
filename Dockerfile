@@ -1,5 +1,15 @@
 FROM rust:bullseye AS builder
 
+# Install dependencies for compilation (including RocksDB requirements)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    clang \
+    libclang-dev \
+    llvm \
+    libssl-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY . .
 

@@ -1,7 +1,10 @@
 mod api;
 mod config;
 mod crypto;
+mod derivation;
+mod dkg_state;
 mod signer;
+mod storage;
 
 use anyhow::Result;
 use poem::listener::TcpListener;
@@ -30,18 +33,17 @@ async fn main() -> Result<()> {
     let frost_config = Arc::new(config::FrostNode::load(&config_path)?);
     let server_config = config::load_server_config(&config_path)?;
 
+    // Create DKG state for in-progress DKG sessions
+    let dkg_state = Arc::new(dkg_state::DkgState::new());
+    tracing::info!("✅ DKG state initialized");
+
     tracing::info!("Starting FROST signer node {}", frost_config.node_index);
     tracing::info!("Network: {:?}", frost_config.network);
-    let group_pubkey_bytes = frost_config
-        .pubkey_package
-        .verifying_key()
-        .serialize()
-        .map_err(|e| anyhow::anyhow!("Failed to serialize group public key: {:?}", e))?;
-    tracing::info!("Group public key: {}", hex::encode(&group_pubkey_bytes));
-
     // Create API service
     let api = api::Api {
         config: frost_config.clone(),
+        storage: frost_config.share_storage.clone(),
+        dkg_state,
     };
 
     let api_service = OpenApiService::new(api, "FROST Signer", "0.1.0").server(format!(

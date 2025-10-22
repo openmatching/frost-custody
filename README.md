@@ -1,165 +1,159 @@
 # Consensus Ring
 
-Bitcoin 2-of-3 threshold signing service for CEX deposit address management.
-
-## Two Implementations
-
-|             | Traditional Multisig | FROST Threshold               |
-| ----------- | -------------------- | ----------------------------- |
-| **Binary**  | `signer-node`        | `frost-signer`                |
-| **Address** | bc1q... (P2WSH)      | bc1p... (P2TR)                |
-| **Size**    | ~250 vbytes          | ~110 vbytes (**56% smaller**) |
-| **Fee**     | 12,500 sats          | 5,500 sats (**56% cheaper**)  |
-| **Privacy** | Visible multisig     | Looks like normal wallet      |
-| **Status**  | ✅ Complete           | ✅ Complete                    |
-
-**Quick decision:**
-- 🎓 Learning → Use `signer-node`
-- 🚀 Production → Use `frost-signer` (56% fee savings!)
-- 📚 Understand trade-offs → [COMPARISON.md](COMPARISON.md)
+Bitcoin 2-of-3 threshold signing for CEX deposit addresses.
 
 ## Quick Start
 
 ```bash
-# Build image (all binaries)
-make build
-
-# Run traditional multisig (ports 3000-3002)
-make up-multisig
-
-# OR run FROST (port 5000, recommended!)
-make up-frost
-
-# OR run both
-make up-all
-
-# Test
-curl 'http://127.0.0.1:3000/health'  # Multisig
-curl 'http://127.0.0.1:5000/health'  # FROST aggregator
+make build        # Build Docker image
+make up-multisig  # Deploy traditional multisig
+make test-multisig # Test
 ```
 
-**One Dockerfile, one docker-compose.yml, different entrypoints!**
+**Production-ready traditional multisig with per-user addresses!**
 
-### Details
+---
 
-**Traditional Multisig:** [signer-node/README.md](signer-node/README.md)  
-**FROST (Recommended):** [frost-aggregator/README.md](frost-aggregator/README.md) and [FROST.md](FROST.md)
+## Two Implementations
+
+| Feature      | Traditional Multisig    | FROST DKG                           |
+| ------------ | ----------------------- | ----------------------------------- |
+| **Binary**   | `signer-node`           | `frost-signer` + `frost-aggregator` |
+| **Address**  | bc1q... (P2WSH)         | bc1p... (P2TR Taproot)              |
+| **Per-user** | ✅ Unique per passphrase | ✅ Unique per passphrase (via DKG)   |
+| **Fee**      | ~250 vbytes             | ~110 vbytes (**56% cheaper**)       |
+| **Recovery** | 3 mnemonics             | 3 master seeds + passphrase list    |
+| **Database** | None                    | RocksDB (cache, recoverable)        |
+| **Status**   | ✅ Production ready      | ✅ Complete, needs testing           |
+
+---
+
+## Traditional Multisig (Recommended for Production)
+
+**Deploy:**
+```bash
+make up-multisig
+```
+
+**APIs:**
+```
+GET  /api/address?passphrase={uuid}  → bc1q... (unique multisig address)
+POST /api/sign {psbt, passphrases}   → Signed PSBT
+GET  /health                         → Status
+```
+
+**Features:**
+- 9-level BIP32 derivation (256-bit keyspace)
+- Passphrase-based (prevents enumeration)
+- Recoverable from 3 mnemonics
+- Stateless
+
+**Docs:** [signer-node/README.md](signer-node/README.md)
+
+---
+
+## FROST with DKG (Advanced)
+
+**Deploy:**
+```bash
+make up-frost
+```
+
+**APIs:**
+```
+POST /api/address/generate {passphrase} → Trigger DKG, return bc1p... address
+POST /api/sign {message}                → Sign with FROST (56% cheaper)
+GET  /health                            → Check all nodes
+```
+
+**Features:**
+- Deterministic DKG with master seeds (recoverable!)
+- Per-user Taproot addresses
+- 56% fee savings
+- Real threshold security
+
+**Docs:** [FROST.md](FROST.md), [frost-aggregator/README.md](frost-aggregator/README.md)
+
+---
 
 ## CEX Integration
 
-**Use the cex-client library for your backend:**
+**Library:** `cex-client` (Rust + Python)
 
 ```rust
 use cex_client::*;
-use uuid::Uuid;
 
-// 1. Derive address locally (fast, no API call!)
+// Derive address locally (fast!)
 let passphrase = Uuid::new_v4().to_string();
 let address = derive_multisig_address(&xpubs, &passphrase, Network::Bitcoin)?;
 
-// 2. Sign PSBT (traditional multisig)
+// Sign PSBT
 let signed = sign_with_threshold(&psbt, &passphrases, &signer_urls)?;
-
-// 3. Or sign with FROST aggregator (56% cheaper, better security!)
-let signature = reqwest::post("http://aggregator:5000/api/sign")
-    .json(&json!({"message": sighash}))
-    .send().await?.json::<SignResponse>().await?.signature;
 ```
 
-**Examples:**
+**Docs:** [cex-client/README.md](cex-client/README.md)
+
+---
+
+## Architecture
+
+**Traditional:**
+```
+CEX → signer-node × 3 (2-of-3 multisig)
+```
+
+**FROST:**
+```
+CEX → frost-aggregator → frost-signer × 3 (2-of-3 threshold)
+      (port 5000)        (internal, isolated)
+```
+
+---
+
+## Documentation
+
+1. **[README.md](README.md)** - This file (start here)
+2. **[DEPLOY.md](DEPLOY.md)** - Deployment guide
+3. **[cex-client/README.md](cex-client/README.md)** - CEX integration
+4. **[FROST.md](FROST.md)** - FROST with DKG
+5. **[SECURITY.md](SECURITY.md)** - Security design
+6. **[COMPARISON.md](COMPARISON.md)** - vs alternatives
+
+---
+
+## Makefile Commands
+
 ```bash
-cargo run --example derive_address        # Local address derivation
-cargo run --example sign_psbt             # Traditional multisig workflow
-cargo run --example frost_aggregator_example  # FROST aggregator workflow
+make build         # Build Docker image
+make up-multisig   # Run traditional multisig
+make up-frost      # Run FROST with DKG
+make down          # Stop all
+make test-multisig # Test multisig
+make test-frost    # Test FROST
 ```
 
-**See [cex-client/README.md](cex-client/README.md) for complete guide.**
+---
 
 ## Key Features
 
 ### Security
-
-- **9-level BIP32 derivation** - Full 256-bit keyspace, no birthday paradox
-- **Passphrase-based** - Use UUIDs, prevents address enumeration
-- **2-of-3 threshold** - 1 node compromised = funds safe
-- **Encrypted nonces** - FROST with stateless servers
-
-**See [SECURITY.md](SECURITY.md)**
+- **Passphrase-based**: UUIDs prevent address enumeration
+- **9-level BIP32**: Full 256-bit keyspace (multisig)
+- **Deterministic DKG**: Seed-recoverable FROST shares
+- **2-of-3 threshold**: 1 node compromise = safe
 
 ### Performance
-
-- **Address derivation**: ~200µs (local, no API call needed!)
-- **FROST fee savings**: 56% vs traditional multisig
-- **Annual savings (1000 tx/day)**: $1.5M
+- **Local derivation**: ~200µs (multisig)
+- **FROST fee savings**: 56% vs multisig
+- **Annual savings**: $1.5M at 1000 tx/day
 
 ### Architecture
+- **Stateless**: Multisig has no database
+- **Recoverable**: FROST shares from master seeds
+- **Isolated**: FROST aggregator pattern
+- **Unified**: Single Dockerfile, one compose file
 
-- **Stateless servers** - No database required
-- **Standard BIP32** - CEX can derive addresses with any BIP32 library
-- **Docker deployment** - Production-ready
-- **OpenAPI** - Auto-generated documentation
-
-## APIs
-
-### Traditional Multisig (signer-node)
-
-```bash
-GET  /api/address?passphrase={uuid}  # Multisig address
-POST /api/sign                        # Sign PSBT
-GET  /health                          # Node status
-```
-
-### FROST (frost-signer)
-
-```bash
-GET  /api/address?passphrase={uuid}   # Taproot address
-POST /api/frost/round1                 # Round 1: Commitments
-POST /api/frost/round2                 # Round 2: Sign
-POST /api/frost/aggregate              # Round 3: Aggregate
-GET  /health                           # Node status
-```
-
-## Project Structure
-
-```
-consensus-ring/
-├── signer-node/       # Traditional multisig
-├── frost-signer/      # FROST signer nodes (internal)
-├── frost-aggregator/  # FROST coordinator (exposed to CEX)
-├── cex-client/        # CEX backend library
-├── Dockerfile         # Single image, all binaries
-├── docker-compose.yml # All services, different entrypoints
-└── Makefile           # Easy deployment
-```
-
-## Documentation
-
-**Essential (Start Here):**
-- **[cex-client/README.md](cex-client/README.md)** - CEX integration guide
-- **[FROST.md](FROST.md)** - FROST usage (56% fee savings!)
-- **[SECURITY.md](SECURITY.md)** - Security design
-
-**Components:**
-- **[frost-aggregator/README.md](frost-aggregator/README.md)** - FROST coordinator (production)
-- **[signer-node/README.md](signer-node/README.md)** - Traditional multisig
-- **[frost-signer/README.md](frost-signer/README.md)** - FROST technical details
-
-**Comparison:**
-- **[COMPARISON.md](COMPARISON.md)** - vs MPC, decision guide
-
-## Architecture
-
-### Traditional Multisig
-```
-CEX → signer-node (3 replicas, 2-of-3)
-```
-
-### FROST (Recommended)
-```
-CEX → frost-aggregator → frost-signer (3 isolated nodes, 2-of-3)
-```
-
-**Security:** Aggregator isolates FROST signers from CEX backend.
+---
 
 ## License
 

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use frost_secp256k1 as frost;
+use frost_secp256k1_tr as frost;
 use rand::rngs::OsRng;
 use std::collections::BTreeMap;
 

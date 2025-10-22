@@ -1,11 +1,13 @@
 use anyhow::{Context, Result};
-use bitcoin::bip32::DerivationPath;
 use bitcoin::hashes::{sha256, Hash};
+use bitcoin::key::Secp256k1;
 use bitcoin::Network;
-use frost_secp256k1 as frost;
+use frost_secp256k1_tr as frost;
 use serde::Deserialize;
 use std::fs;
-use std::str::FromStr;
+use std::sync::Arc;
+
+use crate::storage::ShareStorage;
 
 #[derive(Debug, Deserialize)]
 pub struct ConfigFile {
@@ -29,6 +31,15 @@ pub struct FrostConfig {
     pub key_package_hex: String,
     /// Hex-encoded FROST public key package (shared)
     pub pubkey_package_hex: String,
+    /// Master seed for share derivation (BACKUP THIS! BIP39 mnemonic recommended)
+    pub master_seed_hex: String,
+    /// Path to RocksDB storage (cache only, recoverable)
+    #[serde(default = "default_storage_path")]
+    pub storage_path: String,
+}
+
+fn default_storage_path() -> String {
+    "./data/frost-shares".to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,8 +52,9 @@ pub struct FrostNode {
     pub network: Network,
     pub node_index: u16,
     pub identifier: frost::Identifier,
-    pub key_package: frost::keys::KeyPackage,
-    pub pubkey_package: frost::keys::PublicKeyPackage,
+    pub share_storage: Arc<ShareStorage>,
+    /// Master seed for deterministic derivation (BACKUP THIS!)
+    pub master_seed: Vec<u8>,
 }
 
 impl FrostNode {
@@ -88,20 +100,36 @@ impl FrostNode {
             .map_err(|e| anyhow::anyhow!("Failed to serialize group public key: {:?}", e))?;
         tracing::info!("Group public key: {}", hex::encode(&group_pubkey_bytes));
 
+        // Decode master seed
+        let master_seed = hex::decode(&config.frost.master_seed_hex)
+            .context("Failed to decode master_seed_hex")?;
+
+        tracing::info!("✅ Master seed loaded (can recover all shares from this + passphrases)");
+
+        let share_storage = ShareStorage::open(&config.frost.storage_path)
+            .context("Failed to open share storage")?;
+        tracing::info!("✅ Share storage opened");
+
         Ok(Self {
             network,
             node_index: config.frost.node_index,
             identifier,
-            key_package,
-            pubkey_package,
+            share_storage: Arc::new(share_storage),
+            master_seed,
         })
     }
 
     pub fn get_taproot_address(&self, passphrase: &str) -> Result<String> {
-        use bitcoin::secp256k1::Secp256k1;
+        // Get or derive shares for this passphrase
+        let (_key_pkg, pubkey_pkg) = crate::derivation::get_or_derive_share(
+            &self.master_seed,
+            passphrase,
+            self.node_index,
+            &self.share_storage,
+        )?;
 
-        // Get the FROST group public key (this is our "xpub" equivalent)
-        let group_pubkey = self.pubkey_package.verifying_key();
+        // Get the derived group public key for this passphrase
+        let group_pubkey = pubkey_pkg.verifying_key();
         let group_pubkey_bytes = group_pubkey
             .serialize()
             .map_err(|e| anyhow::anyhow!("Failed to serialize pubkey: {:?}", e))?;

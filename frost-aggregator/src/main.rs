@@ -1,5 +1,6 @@
 mod api;
 mod config;
+mod dkg_orchestrator;
 mod frost_client;
 
 use anyhow::Result;

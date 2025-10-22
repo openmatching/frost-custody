@@ -1,5 +1,5 @@
 use anyhow::Result;
-use frost_secp256k1 as frost;
+use frost_secp256k1_tr as frost;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -20,12 +20,20 @@ pub struct SignatureShare {
 /// Round 1: Generate signing nonces and commitments
 pub fn generate_commitments(
     config: &FrostNode,
+    passphrase: &str,
 ) -> Result<(
     frost::round1::SigningNonces,
     frost::round1::SigningCommitments,
 )> {
     let mut rng = rand::rngs::OsRng;
-    let (nonces, commitments) = frost::round1::commit(config.key_package.signing_share(), &mut rng);
+    let (nonces, commitments) = frost::round1::commit(
+        config
+            .share_storage
+            .get_key_package(passphrase)?
+            .ok_or_else(|| anyhow::anyhow!("Key package not found for passphrase"))?
+            .signing_share(),
+        &mut rng,
+    );
 
     Ok((nonces, commitments))
 }
@@ -33,6 +41,7 @@ pub fn generate_commitments(
 /// Round 2: Sign with nonces and other parties' commitments
 pub fn sign_with_commitments(
     config: &FrostNode,
+    passphrase: &str,
     message: &[u8],
     nonces: &frost::round1::SigningNonces,
     all_commitments: BTreeMap<frost::Identifier, frost::round1::SigningCommitments>,
@@ -41,7 +50,14 @@ pub fn sign_with_commitments(
     let signing_package = frost::SigningPackage::new(all_commitments, message);
 
     // Generate signature share
-    let signature_share = frost::round2::sign(&signing_package, nonces, &config.key_package)?;
+    let signature_share = frost::round2::sign(
+        &signing_package,
+        nonces,
+        &config
+            .share_storage
+            .get_key_package(passphrase)?
+            .ok_or_else(|| anyhow::anyhow!("Key package not found for passphrase"))?,
+    )?;
 
     Ok(signature_share)
 }
@@ -49,14 +65,21 @@ pub fn sign_with_commitments(
 /// Aggregate signature shares into final signature
 pub fn aggregate_signature(
     config: &FrostNode,
+    passphrase: &str,
     message: &[u8],
     commitments: BTreeMap<frost::Identifier, frost::round1::SigningCommitments>,
     signature_shares: BTreeMap<frost::Identifier, frost::round2::SignatureShare>,
 ) -> Result<frost::Signature> {
     let signing_package = frost::SigningPackage::new(commitments, message);
 
-    let group_signature =
-        frost::aggregate(&signing_package, &signature_shares, &config.pubkey_package)?;
+    let group_signature = frost::aggregate(
+        &signing_package,
+        &signature_shares,
+        &config
+            .share_storage
+            .get_pubkey_package(passphrase)?
+            .ok_or_else(|| anyhow::anyhow!("Public key package not found for passphrase"))?,
+    )?;
 
     Ok(group_signature)
 }
@@ -64,12 +87,16 @@ pub fn aggregate_signature(
 /// Verify a signature
 pub fn verify_signature(
     config: &FrostNode,
+    passphrase: &str,
     message: &[u8],
     signature: &frost::Signature,
-) -> Result<bool> {
-    Ok(config
-        .pubkey_package
+) -> Result<()> {
+    config
+        .share_storage
+        .get_pubkey_package(passphrase)?
+        .ok_or_else(|| anyhow::anyhow!("Public key package not found for passphrase"))?
         .verifying_key()
-        .verify(message, signature)
-        .is_ok())
+        .verify(message, signature)?;
+
+    Ok(())
 }

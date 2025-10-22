@@ -1,79 +1,98 @@
 # Security Design
 
-## Passphrase-Based Derivation (9-Level BIP32)
+## Passphrase-Based Derivation
 
-### The Solution
+**Use UUIDs (not sequential IDs) for all address generation.**
 
-**Use 9 BIP32 derivation levels to get full 256-bit keyspace:**
+### Why Passphrases?
 
+**Sequential IDs (bad):**
 ```
-Passphrase (UUID) → SHA-256 (256 bits) → Split into 9 chunks → BIP32 path
-
-Path: m/48'/0'/0'/2'/i0/i1/i2/i3/i4/i5/i6/i7/i8
-Each index i0-i8 is 24-28 bits (< 2^31, non-hardened)
-```
-
-### Security Properties
-
-**1. No Birthday Paradox**
-```
-Keyspace: 2^256
-Collision at 50%: 2^128 ≈ 10^38 users
-Real CEX scale: < 10^9 users
-Collision probability: < 10^-60 ✅
+User 1 → id=1 → address_1
+User 2 → id=2 → address_2
+...
+Attacker can enumerate all addresses!
 ```
 
-**2. No Enumeration Attacks**
+**UUIDs (good):**
 ```
-UUID space: 2^128
-Cannot guess other users' passphrases ✅
-Attacker cannot enumerate all addresses ✅
+User 1 → uuid="550e8400-..." → address_a
+User 2 → uuid="6ba7b810-..." → address_b
+
+Attacker cannot guess UUIDs (2^128 space)
 ```
 
-**3. Standard BIP32**
+### Multisig: 9-Level BIP32
+
+**Algorithm:**
 ```
-CEX can derive addresses locally ✅
-Compatible with any BIP32 library ✅
-Hardware wallet compatible ✅
+Passphrase → SHA-256 → Split into 9 chunks → m/i0/i1/.../i8
+Each chunk < 2^31 (non-hardened)
+Total: 256-bit keyspace
 ```
 
-### Passphrase Recommendations
+**Benefits:**
+- ✅ Full 256-bit space (no birthday paradox)
+- ✅ Standard BIP32 (CEX can derive locally)
+- ✅ No enumeration attacks
+
+### FROST: Deterministic DKG
+
+**Algorithm:**
+```
+Node i: rng = ChaCha20(sha256(master_seed_i + passphrase))
+Run DKG with deterministic RNG
+Result: Unique FROST shares per passphrase
+```
+
+**Benefits:**
+- ✅ Per-user Taproot addresses
+- ✅ Recoverable from master seeds
+- ✅ Real threshold security
+
+---
+
+## Threshold Security
+
+**2-of-3 configuration:**
+- 1 node compromised → ✅ Funds safe
+- 2 nodes compromised → ❌ Funds at risk
+
+**Accepted risk model for Bitcoin custody.**
+
+---
+
+## Backup Strategy
+
+### Traditional Multisig
+```
+Backup: 3 BIP39 mnemonics
+Recovery: Restore mnemonics → derive all addresses
+```
+
+### FROST DKG
+```
+Backup:
+  - 3 master seeds (mnemonics)
+  - List of passphrases (CEX database)
+
+Recovery:
+  - Re-run DKG for each passphrase
+  - Rebuild RocksDB cache
+```
+
+---
+
+## Passphrase Recommendations
 
 **✅ Good:**
 ```python
 str(uuid.uuid4())  # "550e8400-e29b-41d4-a716-446655440000"
-secrets.token_hex(32)  # Random hex
+secrets.token_hex(32)
 hashlib.sha256(f"{user_id}:{SECRET_SALT}").hexdigest()
 ```
 
 **❌ Bad:**
 ```python
 str(user_id)  # Sequential, guessable!
-f"user_{user_id}"  # Predictable pattern
-user_email  # May be known to attacker
 ```
-
-## 2-of-3 Threshold Security
-
-**Attack resistance:**
-- 1 node compromised → ✅ Funds safe
-- 2 nodes compromised → ❌ Funds at risk (accepted risk)
-
-**FROST additional benefit:**
-- Single key share reveals nothing about private key
-- Traditional multisig: each key is complete (riskier if stolen)
-
-## Encrypted Nonce Storage (FROST)
-
-**Challenge:** FROST needs stateful nonces (nonce reuse = key exposure)
-
-**Solution:** Encrypt nonces with node's key_package, return to client
-
-**Security:**
-- Nonces encrypted with node secret ✅
-- Client cannot decrypt ✅
-- Message-bound (prevents reuse) ✅
-- Stateless servers ✅
-
-**See frost-signer/README.md for details.**
-

@@ -67,12 +67,34 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
+#[derive(Debug, Object)]
+pub struct GenerateAddressRequest {
+    /// Passphrase for address derivation
+    pub passphrase: String,
+}
+
+#[derive(Debug, Object)]
+pub struct GenerateAddressResponse {
+    /// Generated Taproot address
+    pub address: String,
+    /// Passphrase
+    pub passphrase: String,
+}
+
 #[derive(ApiResponse)]
 pub enum SignResult {
     #[oai(status = 200)]
     Ok(Json<SignResponse>),
     #[oai(status = 400)]
     BadRequest(Json<ErrorResponse>),
+    #[oai(status = 500)]
+    InternalError(Json<ErrorResponse>),
+}
+
+#[derive(ApiResponse)]
+pub enum GenerateAddressResult {
+    #[oai(status = 200)]
+    Ok(Json<GenerateAddressResponse>),
     #[oai(status = 500)]
     InternalError(Json<ErrorResponse>),
 }
@@ -119,12 +141,39 @@ impl Api {
         }
     }
 
-    /// Get Taproot address for passphrase (proxies to first healthy signer)
+    /// Generate new Taproot address via DKG
+    #[oai(path = "/api/address/generate", method = "post")]
+    async fn generate_address(&self, req: Json<GenerateAddressRequest>) -> GenerateAddressResult {
+        let passphrase = req.0.passphrase;
+
+        tracing::info!("Generating address via DKG for passphrase");
+
+        // Orchestrate DKG across all signer nodes
+        match crate::dkg_orchestrator::orchestrate_dkg(&self.config.signer_nodes, &passphrase).await
+        {
+            Ok(address) => {
+                tracing::info!("✅ DKG complete, generated address: {}", address);
+
+                GenerateAddressResult::Ok(Json(GenerateAddressResponse {
+                    address,
+                    passphrase,
+                }))
+            }
+            Err(e) => {
+                tracing::error!("DKG orchestration failed: {}", e);
+                GenerateAddressResult::InternalError(Json(ErrorResponse {
+                    error: format!("Failed to generate address: {}", e),
+                }))
+            }
+        }
+    }
+
+    /// Get Taproot address for passphrase (proxies to signer to check cache)
     #[oai(path = "/api/address", method = "get")]
     async fn get_address(&self, passphrase: Query<String>) -> AddressResult {
         let passphrase_str = passphrase.0;
 
-        // Try first signer node
+        // Try first signer node (it will use cache if available)
         match frost_client::get_address(&self.config.signer_nodes[0], &passphrase_str).await {
             Ok(address) => AddressResult::Ok(Json(AddressResponse {
                 passphrase: passphrase_str,
@@ -134,7 +183,7 @@ impl Api {
             Err(e) => {
                 tracing::error!("Failed to get address: {}", e);
                 AddressResult::InternalError(Json(ErrorResponse {
-                    error: format!("Failed to get address: {}", e),
+                    error: format!("Address not found. Use POST /api/address/generate to create new address via DKG: {}", e),
                 }))
             }
         }
