@@ -1,12 +1,12 @@
 [package]
-name = "signer-node"
+name = "multisig-signer"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "signer-node"
+name = "multisig-signer"
 path = "src/main.rs"
 
 [dependencies]

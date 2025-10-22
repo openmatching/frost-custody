@@ -1,6 +1,8 @@
-# Consensus Ring
+# FROST Custody
 
-Bitcoin 2-of-3 threshold signing for CEX with per-user addresses.
+Bitcoin 2-of-3 threshold signing with per-user addresses.
+
+**FROST threshold signatures for cryptocurrency custody** - Production-ready system for exchanges and custodians.
 
 ## Quick Start
 
@@ -43,7 +45,7 @@ make up-multisig
 - Passphrase-based (prevents enumeration)
 - Stateless, seed-recoverable
 
-**Docs:** [signer-node/README.md](signer-node/README.md)
+**Docs:** [bitcoin/multisig-signer/README.md](bitcoin/multisig-signer/README.md)
 
 ---
 
@@ -84,16 +86,16 @@ curl -X POST http://127.0.0.1:6000/api/sign/psbt \
 # Returns: {"psbt": "cHNidP8BAH...", "inputs_signed": 2}
 ```
 
-**Docs:** [FROST.md](FROST.md), [frost-aggregator/README.md](frost-aggregator/README.md)
+**Docs:** [FROST.md](FROST.md), [bitcoin/frost-aggregator/README.md](bitcoin/frost-aggregator/README.md)
 
 ---
 
-## CEX Integration
+## Client Integration
 
-**Library:** `cex-client` (Rust + Python)
+**Library:** `client` (Rust + Python bindings)
 
 ```rust
-use cex_client::*;
+use frost_custody_client::*;
 
 // Multisig: Derive address locally (fast!)
 let passphrase = Uuid::new_v4().to_string();
@@ -107,7 +109,7 @@ let address = reqwest::post("http://aggregator:6000/api/address/generate")
     .address;
 ```
 
-**Docs:** [cex-client/README.md](cex-client/README.md)
+**Docs:** [client/README.md](client/README.md)
 
 ---
 
@@ -202,7 +204,7 @@ make clean        # Remove everything
 1. **[README.md](README.md)** - This file (overview + quickstart)
 2. **[FROST.md](FROST.md)** - FROST DKG details
 3. **[SECURITY.md](SECURITY.md)** - Security design
-4. **[cex-client/README.md](cex-client/README.md)** - CEX integration
+4. **[client/README.md](client/README.md)** - Client integration
 
 ---
 

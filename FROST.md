@@ -125,4 +125,4 @@ for passphrase in passphrase_list:
 
 **FROST saves $1.5 million/year at scale!** 🚀
 
-See [frost-aggregator/README.md](frost-aggregator/README.md) for details.
+See [bitcoin/frost-aggregator/README.md](bitcoin/frost-aggregator/README.md) for details.

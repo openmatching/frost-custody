@@ -19,7 +19,7 @@ COPY . .
 RUN --mount=type=cache,target=/app/target \
     --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --workspace \
-    && cp target/release/signer-node /usr/local/bin/ \
+    && cp target/release/multisig-signer /usr/local/bin/ \
     && cp target/release/frost-signer /usr/local/bin/ \
     && cp target/release/frost-aggregator /usr/local/bin/
 
@@ -28,11 +28,11 @@ FROM debian:bullseye-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Copy all binaries
-COPY --from=builder /usr/local/bin/signer-node /usr/local/bin/
+COPY --from=builder /usr/local/bin/multisig-signer /usr/local/bin/
 COPY --from=builder /usr/local/bin/frost-signer /usr/local/bin/
 COPY --from=builder /usr/local/bin/frost-aggregator /usr/local/bin/
 
 ENV CONFIG_PATH=/etc/config.toml
 
 # Default entrypoint (can be overridden)
-ENTRYPOINT ["signer-node"]
+ENTRYPOINT ["multisig-signer"]

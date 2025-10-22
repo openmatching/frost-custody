@@ -1,11 +1,16 @@
 [workspace]
-members = ["signer-node", "frost-signer", "frost-aggregator", "cex-client"]
+members = [
+    "bitcoin/multisig-signer",
+    "bitcoin/frost-signer",
+    "bitcoin/frost-aggregator",
+    "client",
+]
 resolver = "2"
 
 [workspace.package]
 edition = "2021"
 version = "0.1.0"
-authors = ["Consensus Ring Contributors"]
+authors = ["mingyang91<my@famer.me>"]
 license = "MIT"
 
 [workspace.dependencies]

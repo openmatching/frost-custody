@@ -1,6 +1,6 @@
-# CEX Client Library
+# FROST Custody Client Library
 
-Complete integration library for your CEX backend to work with consensus-ring signer nodes.
+Complete integration library for exchanges and custodians to work with FROST Custody signer nodes.
 
 ## Features
 
@@ -43,7 +43,7 @@ Complete integration library for your CEX backend to work with consensus-ring si
 
 ```toml
 [dependencies]
-cex-client = { path = "../cex-client" }
+frost-custody-client = { path = "../client" }
 bitcoin = "0.32"
 ```
 
@@ -84,7 +84,7 @@ db.execute(
 ### 2. Build and Sign PSBT
 
 ```rust
-use cex_client::{Utxo, build_consolidation_psbt, add_witness_scripts, sign_with_threshold};
+use frost_custody_client::{Utxo, build_consolidation_psbt, add_witness_scripts, sign_with_threshold};
 
 // Get UTXOs from database
 let utxos = vec![
@@ -145,7 +145,7 @@ cd .. && cargo run --example frost_aggregator_example
 ### Option A: Traditional Multisig
 
 ```rust
-use cex_client::*;
+use frost_custody_client::*;
 use bitcoin::bip32::Xpub;
 use uuid::Uuid;
 

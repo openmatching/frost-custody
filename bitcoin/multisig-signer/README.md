@@ -32,5 +32,5 @@ docker-compose up -d
 
 **Use UUIDs for passphrases (NOT sequential IDs!)**
 
-See [../cex-client/README.md](../cex-client/README.md) for CEX integration.
+See [../../client/README.md](../../client/README.md) for client integration.
 

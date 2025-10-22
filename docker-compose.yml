@@ -1,10 +1,10 @@
 services:
   # Traditional Multisig Nodes (ports 3000-3002)
   multisig-node0:
-    image: consensus-ring:latest
+    image: frost-custody:latest
     build: .
     container_name: multisig-node-0
-    entrypoint: ["signer-node"]
+    entrypoint: ["multisig-signer"]
     volumes:
       - ./config-node0.toml:/etc/config.toml:ro
     ports:
@@ -14,9 +14,9 @@ services:
       - signer-net
 
   multisig-node1:
-    image: consensus-ring:latest
+    image: frost-custody:latest
     container_name: multisig-node-1
-    entrypoint: ["signer-node"]
+    entrypoint: ["multisig-signer"]
     volumes:
       - ./config-node1.toml:/etc/config.toml:ro
     ports:
@@ -26,9 +26,9 @@ services:
       - signer-net
 
   multisig-node2:
-    image: consensus-ring:latest
+    image: frost-custody:latest
     container_name: multisig-node-2
-    entrypoint: ["signer-node"]
+    entrypoint: ["multisig-signer"]
     volumes:
       - ./config-node2.toml:/etc/config.toml:ro
     ports:
@@ -39,7 +39,7 @@ services:
 
   # FROST Signer Nodes (ports 4000-4002, internal only)
   frost-node0:
-    image: consensus-ring:latest
+    image: frost-custody:latest
     container_name: frost-signer-node-0
     entrypoint: ["frost-signer"]
     volumes:
@@ -49,7 +49,7 @@ services:
     # No external ports - only aggregator can reach
 
   frost-node1:
-    image: consensus-ring:latest
+    image: frost-custody:latest
     container_name: frost-signer-node-1
     entrypoint: ["frost-signer"]
     volumes:
@@ -58,7 +58,7 @@ services:
       - frost-internal
 
   frost-node2:
-    image: consensus-ring:latest
+    image: frost-custody:latest
     container_name: frost-signer-node-2
     entrypoint: ["frost-signer"]
     volumes:
@@ -68,7 +68,7 @@ services:
 
   # FROST Aggregator (port 6000, exposed to CEX)
   frost-aggregator:
-    image: consensus-ring:latest
+    image: frost-custody:latest
     container_name: frost-aggregator
     entrypoint: ["frost-aggregator"]
     volumes:
@@ -93,8 +93,8 @@ networks:
   cex-network:
     driver: bridge
     # CEX backend connects here
-# Profiles for different deployment scenarios
-# Run specific services:
-#   docker-compose up multisig-node0 multisig-node1 multisig-node2  # Traditional only
+# FROST Custody - Bitcoin threshold signing system
+# Profiles for different deployment scenarios:
+#   docker-compose up multisig-node0 multisig-node1 multisig-node2  # Traditional multisig only
 #   docker-compose up frost-node0 frost-node1 frost-node2 frost-aggregator  # FROST only
 #   docker-compose up  # All services

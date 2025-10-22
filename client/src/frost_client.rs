@@ -162,7 +162,7 @@ impl FrostSignerClient {
     ///
     /// # Example
     /// ```
-    /// use cex_client::frost_client::FrostSignerClient;
+    /// use frost_custody_client::frost_client::FrostSignerClient;
     ///
     /// let client = FrostSignerClient::new(
     ///     vec![

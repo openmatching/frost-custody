@@ -4,7 +4,7 @@
 use anyhow::Result;
 use bitcoin::bip32::Xpub;
 use bitcoin::{Address, Amount, Network, Txid};
-use cex_client::{
+use frost_custody_client::{
     add_witness_scripts, build_consolidation_psbt, psbt_from_base64, psbt_to_base64,
     sign_with_threshold, Utxo,
 };
@@ -50,7 +50,10 @@ fn main() -> Result<()> {
     ];
 
     println!("  Found {} UTXOs", utxos.len());
-    println!("  Total input: {} sats\n", utxos.iter().map(|u| u.amount.to_sat()).sum::<u64>());
+    println!(
+        "  Total input: {} sats\n",
+        utxos.iter().map(|u| u.amount.to_sat()).sum::<u64>()
+    );
 
     // Step 2: Build PSBT
     println!("Step 2: Build consolidation PSBT\n");
@@ -63,7 +66,10 @@ fn main() -> Result<()> {
 
     println!("  Inputs: {}", psbt.inputs.len());
     println!("  Outputs: {}", psbt.unsigned_tx.output.len());
-    println!("  Output amount: {} sats", psbt.unsigned_tx.output[0].value.to_sat());
+    println!(
+        "  Output amount: {} sats",
+        psbt.unsigned_tx.output[0].value.to_sat()
+    );
     println!("  Fee: {} sats\n", fee.to_sat());
 
     // Step 3: Add witness scripts (required for multisig signing)
@@ -71,7 +77,10 @@ fn main() -> Result<()> {
 
     add_witness_scripts(&mut psbt, &xpubs, &passphrases)?;
 
-    println!("  ✅ Witness scripts added for {} inputs\n", psbt.inputs.len());
+    println!(
+        "  ✅ Witness scripts added for {} inputs\n",
+        psbt.inputs.len()
+    );
 
     // Step 4: Serialize PSBT
     let psbt_base64 = psbt_to_base64(&psbt);
@@ -113,4 +122,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-

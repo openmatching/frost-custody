@@ -18,7 +18,7 @@ Bitcoin threshold signing using FROST (Flexible Round-Optimized Schnorr Threshol
 - RocksDB cache (optional, can rebuild)
 - Use via frost-aggregator (recommended!)
 
-See **[FROST.md](../FROST.md)** and **[frost-aggregator/README.md](../frost-aggregator/README.md)** for full usage guide.
+See **[FROST.md](../../FROST.md)** and **[frost-aggregator/README.md](../frost-aggregator/README.md)** for full usage guide.
 
 ## Key Advantages Over Traditional Multisig
 

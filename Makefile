@@ -1,7 +1,7 @@
 .PHONY: help build up-multisig up-frost up-all down logs clean clippy test
 
 help:
-	@echo "Consensus Ring - Bitcoin Threshold Signing"
+	@echo "FROST Custody - Bitcoin Threshold Signing"
 	@echo ""
 	@echo "Available commands:"
 	@echo "  make build        Build Docker image"
@@ -18,7 +18,7 @@ help:
 	@echo "  make build && make up-frost"
 
 build:
-	@echo "Building consensus-ring image..."
+	@echo "Building frost-custody image..."
 	docker-compose build
 
 up-multisig:
@@ -50,7 +50,7 @@ clean:
 	@echo "Stopping and removing all containers, networks..."
 	docker-compose down -v
 	@echo "Removing image..."
-	docker rmi consensus-ring:latest 2>/dev/null || true
+	docker rmi frost-custody:latest 2>/dev/null || true
 
 test-multisig:
 	@echo "Testing multisig API..."
