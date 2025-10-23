@@ -28,6 +28,9 @@ base64 = "0.22"
 frost-secp256k1-tr = "2.0.0"
 rand = "0.8"
 
+# Ethereum
+sha3 = "0.10"
+
 [profile.release]
 opt-level = 3
 lto = true

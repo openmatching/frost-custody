@@ -17,6 +17,12 @@ pub struct SigningAggregatorApi {
 pub struct SignMessageRequest {
     pub passphrase: String,
     pub message: String, // hex-encoded
+    #[oai(default = "default_curve")]
+    pub curve: String, // "secp256k1" or "ed25519", defaults to secp256k1
+}
+
+fn default_curve() -> String {
+    "secp256k1".to_string()
 }
 
 #[derive(Debug, Object)]
@@ -81,14 +87,22 @@ impl SigningAggregatorApi {
     /// 5. Call /api/frost/aggregate to get final signature
     #[oai(path = "/api/sign/message", method = "post")]
     async fn sign_message(&self, Json(req): Json<SignMessageRequest>) -> SignResult {
-        tracing::info!("Signing message with FROST");
+        tracing::info!("Signing message with FROST (curve: {})", req.curve);
 
-        // Orchestrate FROST signing
-        match crate::common::frost_client::sign_message(
+        // Determine FROST endpoint based on curve
+        let curve_suffix = if req.curve == "ed25519" {
+            "ed25519"
+        } else {
+            "" // secp256k1 is default (no suffix)
+        };
+
+        // Orchestrate FROST signing with curve-specific endpoints
+        match sign_message_for_curve(
             &req.passphrase,
             &req.message,
             &self.config.signer_nodes,
             self.config.threshold,
+            curve_suffix,
         )
         .await
         {
@@ -236,4 +250,188 @@ impl SigningAggregatorApi {
             threshold: self.config.threshold,
         })
     }
+}
+
+/// Sign message with FROST for any curve (secp256k1 or Ed25519)
+async fn sign_message_for_curve(
+    passphrase: &str,
+    message: &str,
+    signer_urls: &[String],
+    threshold: usize,
+    curve_suffix: &str,
+) -> anyhow::Result<(String, usize)> {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize)]
+    struct Round1Request {
+        passphrase: String,
+        message: String,
+    }
+
+    #[derive(Deserialize, Clone)]
+    struct Round1Response {
+        identifier: String,
+        commitments: String,
+        encrypted_nonces: String,
+    }
+
+    #[derive(Serialize)]
+    struct Round2Request {
+        passphrase: String,
+        message: String,
+        encrypted_nonces: String,
+        all_commitments: Vec<CommitmentEntry>,
+    }
+
+    #[derive(Serialize, Clone)]
+    struct CommitmentEntry {
+        identifier: String,
+        commitments: String,
+    }
+
+    #[derive(Deserialize)]
+    struct Round2Response {
+        signature_share: String,
+        identifier: String,
+    }
+
+    #[derive(Serialize)]
+    struct AggregateRequest {
+        passphrase: String,
+        message: String,
+        all_commitments: Vec<CommitmentEntry>,
+        signature_shares: Vec<SignatureShareEntry>,
+    }
+
+    #[derive(Serialize)]
+    struct SignatureShareEntry {
+        identifier: String,
+        share: String,
+    }
+
+    #[derive(Deserialize)]
+    struct AggregateResponse {
+        signature: String,
+        verified: bool,
+    }
+
+    let client = reqwest::Client::new();
+
+    // Build endpoint URLs based on curve
+    let frost_prefix = if curve_suffix.is_empty() {
+        "frost".to_string()
+    } else {
+        format!("frost/{}", curve_suffix)
+    };
+
+    tracing::debug!(
+        "Starting FROST signing with {} nodes (threshold: {}, curve: {})",
+        signer_urls.len(),
+        threshold,
+        if curve_suffix.is_empty() {
+            "secp256k1"
+        } else {
+            curve_suffix
+        }
+    );
+
+    // Round 1: Get commitments from threshold number of nodes
+    tracing::debug!("FROST Round 1: Collecting commitments");
+
+    let mut round1_responses = Vec::new();
+    for (i, url) in signer_urls.iter().take(threshold).enumerate() {
+        let resp = client
+            .post(format!("{}/api/{}/round1", url, frost_prefix))
+            .json(&Round1Request {
+                passphrase: passphrase.to_string(),
+                message: message.to_string(),
+            })
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let error = resp.text().await.unwrap_or_else(|_| "Unknown".to_string());
+            anyhow::bail!("Node {} round1 failed: {}", i, error);
+        }
+
+        let r1: Round1Response = resp.json().await?;
+        tracing::debug!("  ✅ Node {} commitment received", i);
+        round1_responses.push(r1);
+    }
+
+    // Prepare commitments for round 2
+    let all_commitments: Vec<CommitmentEntry> = round1_responses
+        .iter()
+        .map(|r| CommitmentEntry {
+            identifier: r.identifier.clone(),
+            commitments: r.commitments.clone(),
+        })
+        .collect();
+
+    // Round 2: Get signature shares
+    tracing::debug!("FROST Round 2: Collecting signature shares");
+
+    let mut round2_responses = Vec::new();
+    for (i, (url, r1)) in signer_urls
+        .iter()
+        .take(threshold)
+        .zip(&round1_responses)
+        .enumerate()
+    {
+        let resp = client
+            .post(format!("{}/api/{}/round2", url, frost_prefix))
+            .json(&Round2Request {
+                passphrase: passphrase.to_string(),
+                message: message.to_string(),
+                encrypted_nonces: r1.encrypted_nonces.clone(),
+                all_commitments: all_commitments.clone(),
+            })
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let error = resp.text().await.unwrap_or_else(|_| "Unknown".to_string());
+            anyhow::bail!("Node {} round2 failed: {}", i, error);
+        }
+
+        let r2: Round2Response = resp.json().await?;
+        tracing::debug!("  ✅ Node {} signature share received", i);
+        round2_responses.push(r2);
+    }
+
+    // Round 3: Aggregate signature
+    tracing::debug!("FROST Round 3: Aggregating signature");
+
+    let signature_shares: Vec<SignatureShareEntry> = round2_responses
+        .iter()
+        .map(|r| SignatureShareEntry {
+            identifier: r.identifier.clone(),
+            share: r.signature_share.clone(),
+        })
+        .collect();
+
+    let resp = client
+        .post(format!("{}/api/{}/aggregate", signer_urls[0], frost_prefix))
+        .json(&AggregateRequest {
+            passphrase: passphrase.to_string(),
+            message: message.to_string(),
+            all_commitments,
+            signature_shares,
+        })
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let error = resp.text().await.unwrap_or_else(|_| "Unknown".to_string());
+        anyhow::bail!("Aggregate failed: {}", error);
+    }
+
+    let aggregate: AggregateResponse = resp.json().await?;
+
+    tracing::info!(
+        "✅ FROST signing complete, signature verified: {}",
+        aggregate.verified
+    );
+
+    Ok((aggregate.signature, threshold))
 }

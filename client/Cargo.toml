@@ -18,6 +18,8 @@ client = ["reqwest"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
+sha3 = "0.10"
+bs58 = "0.5"
 
 [[example]]
 name = "derive_address"
@@ -26,3 +28,18 @@ path = "examples/derive_address.rs"
 [[example]]
 name = "sign_psbt"
 path = "examples/sign_psbt.rs"
+
+[[example]]
+name = "sign_psbt_frost"
+path = "examples/sign_psbt_frost.rs"
+required-features = ["client"]
+
+[[example]]
+name = "sign_eth_frost"
+path = "examples/sign_eth_frost.rs"
+required-features = ["client"]
+
+[[example]]
+name = "sign_sol_frost"
+path = "examples/sign_sol_frost.rs"
+required-features = ["client"]
