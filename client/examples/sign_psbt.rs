@@ -1,12 +1,12 @@
 // Complete example: Build and sign PSBT from CEX backend
 // Run with: cargo run --example sign_psbt
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use bitcoin::bip32::Xpub;
 use bitcoin::{Address, Amount, Network, Txid};
 use frost_custody_client::{
-    add_witness_scripts, build_consolidation_psbt, psbt_from_base64, psbt_to_base64,
-    sign_with_threshold, Utxo,
+    add_witness_scripts, build_consolidation_psbt, derive_multisig_address, psbt_from_base64,
+    psbt_to_base64, sign_with_threshold, Utxo,
 };
 use std::str::FromStr;
 
@@ -25,8 +25,22 @@ fn main() -> Result<()> {
         "http://127.0.0.1:3001".to_string(),
     ];
 
-    // Step 1: Simulate getting UTXOs from database
-    println!("Step 1: Get UTXOs from database\n");
+    // Step 1: Generate deposit addresses (simulating user deposits)
+    println!("Step 1: Generate deposit addresses for 2 users\n");
+
+    let passphrase1 = "550e8400-e29b-41d4-a716-446655440000".to_string();
+    let passphrase2 = "6ba7b810-9dad-11d1-80b4-00c04fd430c8".to_string();
+
+    let address1 = derive_multisig_address(&xpubs, &passphrase1, Network::Bitcoin)
+        .context("Failed to derive address 1")?;
+    let address2 = derive_multisig_address(&xpubs, &passphrase2, Network::Bitcoin)
+        .context("Failed to derive address 2")?;
+
+    println!("  User 1 deposit address: {}", address1);
+    println!("  User 2 deposit address: {}\n", address2);
+
+    // Step 2: Simulate getting UTXOs from database (after users deposit)
+    println!("Step 2: Get UTXOs from database\n");
 
     let utxos = vec![
         Utxo {
@@ -35,8 +49,8 @@ fn main() -> Result<()> {
             )?,
             vout: 0,
             amount: Amount::from_sat(100_000),
-            address: Address::from_str("bc1q...")?.require_network(Network::Bitcoin)?,
-            passphrase: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            address: address1,
+            passphrase: passphrase1,
         },
         Utxo {
             txid: Txid::from_str(
@@ -44,8 +58,8 @@ fn main() -> Result<()> {
             )?,
             vout: 1,
             amount: Amount::from_sat(200_000),
-            address: Address::from_str("bc1q...")?.require_network(Network::Bitcoin)?,
-            passphrase: "6ba7b810-9dad-11d1-80b4-00c04fd430c8".to_string(),
+            address: address2,
+            passphrase: passphrase2,
         },
     ];
 
@@ -55,11 +69,11 @@ fn main() -> Result<()> {
         utxos.iter().map(|u| u.amount.to_sat()).sum::<u64>()
     );
 
-    // Step 2: Build PSBT
-    println!("Step 2: Build consolidation PSBT\n");
+    // Step 3: Build consolidation PSBT
+    println!("Step 3: Build consolidation PSBT\n");
 
-    let destination =
-        Address::from_str("bc1qcoldwalletaddress...")?.require_network(Network::Bitcoin)?;
+    let destination = Address::from_str("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4")?
+        .require_network(Network::Bitcoin)?;
     let fee = Amount::from_sat(5_000);
 
     let (mut psbt, passphrases) = build_consolidation_psbt(utxos, destination, fee)?;
@@ -72,8 +86,8 @@ fn main() -> Result<()> {
     );
     println!("  Fee: {} sats\n", fee.to_sat());
 
-    // Step 3: Add witness scripts (required for multisig signing)
-    println!("Step 3: Add witness scripts to PSBT\n");
+    // Step 4: Add witness scripts (required for multisig signing)
+    println!("Step 4: Add witness scripts to PSBT\n");
 
     add_witness_scripts(&mut psbt, &xpubs, &passphrases)?;
 
@@ -82,18 +96,18 @@ fn main() -> Result<()> {
         psbt.inputs.len()
     );
 
-    // Step 4: Serialize PSBT
+    // Step 5: Serialize PSBT
     let psbt_base64 = psbt_to_base64(&psbt);
-    println!("Step 4: PSBT serialized\n");
+    println!("Step 5: PSBT serialized\n");
     println!("  Base64 length: {} chars\n", psbt_base64.len());
 
-    // Step 5: Sign with signer nodes
-    println!("Step 5: Sign with signer nodes (2-of-3 threshold)\n");
+    // Step 6: Sign with signer nodes
+    println!("Step 6: Sign with signer nodes (2-of-3 threshold)\n");
 
     let signed_psbt = sign_with_threshold(&psbt_base64, &passphrases, &signer_nodes)?;
 
-    // Step 6: Parse signed PSBT
-    println!("\nStep 6: Verify signed PSBT\n");
+    // Step 7: Parse signed PSBT
+    println!("\nStep 7: Verify signed PSBT\n");
 
     let final_psbt = psbt_from_base64(&signed_psbt)?;
 
@@ -107,8 +121,8 @@ fn main() -> Result<()> {
     println!("  Total signatures: {}", sig_count);
     println!("  ✅ PSBT ready to finalize\n");
 
-    // Step 7: Finalize (extract final transaction)
-    println!("Step 7: Finalize PSBT\n");
+    // Step 8: Finalize (extract final transaction)
+    println!("Step 8: Finalize PSBT\n");
     println!("  (In production, call psbt.finalize() and broadcast)\n");
 
     println!("=== Summary ===");
