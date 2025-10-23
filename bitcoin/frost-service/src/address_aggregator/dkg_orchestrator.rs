@@ -50,13 +50,50 @@ struct DkgFinalizeResponse {
     pubkey_hex: String, // Raw public key from signer (not address)
 }
 
-/// Orchestrate DKG across all signer nodes to generate FROST keys
-/// Returns the raw public key (hex) - caller derives chain-specific addresses
+/// Orchestrate secp256k1 DKG across all signer nodes
 pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result<String> {
+    orchestrate_dkg_for_curve(signer_urls, passphrase, "").await
+}
+
+/// Orchestrate Ed25519 DKG across all signer nodes (for Solana)
+pub async fn orchestrate_dkg_ed25519(signer_urls: &[String], passphrase: &str) -> Result<String> {
+    orchestrate_dkg_for_curve(signer_urls, passphrase, "ed25519").await
+}
+
+/// Generic DKG orchestrator supporting both secp256k1 and Ed25519
+async fn orchestrate_dkg_for_curve(
+    signer_urls: &[String],
+    passphrase: &str,
+    curve_suffix: &str,
+) -> Result<String> {
     let client = reqwest::Client::new();
 
+    // Build endpoint URLs based on curve
+    let round1_endpoint = if curve_suffix.is_empty() {
+        "round1".to_string()
+    } else {
+        format!("{}/round1", curve_suffix)
+    };
+    let round2_endpoint = if curve_suffix.is_empty() {
+        "round2".to_string()
+    } else {
+        format!("{}/round2", curve_suffix)
+    };
+    let finalize_endpoint = if curve_suffix.is_empty() {
+        "finalize".to_string()
+    } else {
+        format!("{}/finalize", curve_suffix)
+    };
+
+    let curve_name = if curve_suffix.is_empty() {
+        "secp256k1"
+    } else {
+        curve_suffix
+    };
+
     tracing::info!(
-        "Starting DKG for passphrase across {} nodes",
+        "Starting {} DKG for passphrase across {} nodes",
+        curve_name,
         signer_urls.len()
     );
 
@@ -68,7 +105,7 @@ pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result
         tracing::debug!("  Calling node {} at {}", i, url);
 
         let resp = client
-            .post(format!("{}/api/dkg/round1", url))
+            .post(format!("{}/api/dkg/{}", url, round1_endpoint))
             .json(&DkgRound1Request {
                 passphrase: passphrase.to_string(),
             })
@@ -113,7 +150,7 @@ pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result
         tracing::debug!("  Calling node {} at {}", i, url);
 
         let resp = client
-            .post(format!("{}/api/dkg/round2", url))
+            .post(format!("{}/api/dkg/{}", url, round2_endpoint))
             .json(&DkgRound2Request {
                 passphrase: passphrase.to_string(),
                 round1_packages: all_round1_packages.clone(),
@@ -132,9 +169,16 @@ pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result
             .await
             .context(format!("Failed to parse round2 response from node {}", i))?;
 
-        // Distribute packages to recipients
+        // Distribute packages to recipients (skip self-packages)
         for entry in r2.packages {
             let recipient_idx = entry.recipient_index as usize;
+
+            // Skip packages where node sends to itself (shouldn't happen but be defensive)
+            if recipient_idx == i {
+                tracing::warn!("Node {} generated round2 package for itself, skipping", i);
+                continue;
+            }
+
             // Add sender_index for tracking
             let mut entry_with_sender = entry.clone();
             entry_with_sender.sender_index = i as u16; // Current node is the sender
@@ -170,7 +214,7 @@ pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result
         );
 
         let resp = client
-            .post(format!("{}/api/dkg/finalize", url))
+            .post(format!("{}/api/dkg/{}", url, finalize_endpoint))
             .json(&DkgFinalizeRequest {
                 passphrase: passphrase.to_string(),
                 round1_packages: all_round1_packages.clone(),

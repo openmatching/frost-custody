@@ -803,6 +803,152 @@ impl UnifiedApi {
         }
     }
 
+    /// DKG Round 2: Process Ed25519 round1 packages and generate round2 packages
+    #[oai(path = "/api/dkg/ed25519/round2", method = "post")]
+    async fn dkg_ed25519_round2(&self, req: Json<DkgRound2Request>) -> DkgRound2Result {
+        let req = req.0;
+
+        tracing::info!("DKG Round 2 for passphrase (Ed25519)");
+
+        // Retrieve our round1 secret
+        let secret_key = format!("ed25519:r1:{}", req.passphrase);
+        let round1_secret_bytes = match self
+            .dkg_state
+            .generic_secrets
+            .lock()
+            .unwrap()
+            .get(&secret_key)
+        {
+            Some(s) => s.clone(),
+            None => {
+                return DkgRound2Result::InternalError(Json(ErrorResponse {
+                    error: "Ed25519 Round1 secret not found. Must call round1 first.".to_string(),
+                }))
+            }
+        };
+
+        let round1_secret: frost_ed25519::keys::dkg::round1::SecretPackage =
+            match serde_json::from_slice(&round1_secret_bytes) {
+                Ok(s) => s,
+                Err(e) => {
+                    return DkgRound2Result::InternalError(Json(ErrorResponse {
+                        error: format!("Failed to deserialize Ed25519 round1 secret: {}", e),
+                    }))
+                }
+            };
+
+        // Parse all round1 packages (Ed25519 DKG part2 needs all n-1 OTHER packages, excluding own)
+        let mut round1_packages = std::collections::BTreeMap::new();
+        for pkg in req.round1_packages {
+            // Skip own package
+            if pkg.node_index == self.config.node_index {
+                tracing::debug!(
+                    "Ed25519 round2: Skipping own package (node {})",
+                    pkg.node_index
+                );
+                continue;
+            }
+
+            let pkg_bytes = match hex::decode(&pkg.package) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to decode Ed25519 package from node {}: {}",
+                        pkg.node_index,
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            let package: frost_ed25519::keys::dkg::round1::Package =
+                match serde_json::from_slice(&pkg_bytes) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to parse Ed25519 package from node {}: {}",
+                            pkg.node_index,
+                            e
+                        );
+                        continue;
+                    }
+                };
+
+            let sender_id = match frost_ed25519::Identifier::try_from(pkg.node_index + 1) {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::warn!("Invalid Ed25519 node index {}: {:?}", pkg.node_index, e);
+                    continue;
+                }
+            };
+
+            round1_packages.insert(sender_id, package);
+        }
+
+        // Run Ed25519 DKG part2
+        let (round2_secret, round2_packages) =
+            match frost_ed25519::keys::dkg::part2(round1_secret, &round1_packages) {
+                Ok(result) => result,
+                Err(e) => {
+                    return DkgRound2Result::InternalError(Json(ErrorResponse {
+                        error: format!("Ed25519 DKG round2 failed: {:?}", e),
+                    }))
+                }
+            };
+
+        // Store round2 secret for finalize
+        let secret_key = format!("ed25519:r2:{}", req.passphrase);
+        self.dkg_state
+            .generic_secrets
+            .lock()
+            .unwrap()
+            .insert(secret_key, serde_json::to_vec(&round2_secret).unwrap());
+
+        // Convert packages to response format
+        let mut response_packages = Vec::new();
+        for (recipient_id, package) in round2_packages {
+            // Convert FROST Ed25519 identifier back to node index
+            let recipient_bytes = recipient_id.serialize();
+
+            // Ed25519 identifiers are 32 bytes. Log the conversion.
+            tracing::info!(
+                "Ed25519 round2 node {}: recipient_id hex={}, bytes len={}, first={:02x}, last={:02x}",
+                self.config.node_index,
+                hex::encode(&recipient_bytes),
+                recipient_bytes.len(),
+                recipient_bytes.get(0).copied().unwrap_or(0),
+                recipient_bytes.last().copied().unwrap_or(0)
+            );
+
+            let recipient_index = if !recipient_bytes.is_empty() {
+                // Ed25519 uses LITTLE-ENDIAN encoding, so value is in FIRST byte (not last!)
+                let first_byte = recipient_bytes[0];
+                let index = first_byte.saturating_sub(1) as u16;
+                tracing::info!(
+                    "Ed25519 round2 node {}: first_byte={}, calculated recipient_index={}",
+                    self.config.node_index,
+                    first_byte,
+                    index
+                );
+                index
+            } else {
+                0
+            };
+
+            let package_json = serde_json::to_vec(&package).unwrap();
+
+            response_packages.push(DkgPackageEntry {
+                sender_index: self.config.node_index,
+                recipient_index,
+                package: hex::encode(package_json),
+            });
+        }
+
+        DkgRound2Result::Ok(Json(DkgRound2Response {
+            packages: response_packages,
+        }))
+    }
+
     /// DKG Finalize: Complete Ed25519 key generation
     #[oai(path = "/api/dkg/ed25519/finalize", method = "post")]
     async fn dkg_ed25519_finalize(&self, req: Json<DkgFinalizeRequest>) -> DkgFinalizeResult {
@@ -838,9 +984,18 @@ impl UnifiedApi {
                 }
             };
 
-        // Parse packages (simplified - in production handle routing properly)
+        // Parse round1 packages (skip own package)
         let mut round1_packages = std::collections::BTreeMap::new();
         for pkg in req.round1_packages {
+            // Skip own package - we don't include it in DKG
+            if pkg.node_index == self.config.node_index {
+                tracing::debug!(
+                    "Skipping own Ed25519 round1 package (node {})",
+                    pkg.node_index
+                );
+                continue;
+            }
+
             let pkg_bytes = match hex::decode(&pkg.package) {
                 Ok(b) => b,
                 Err(_) => continue,
@@ -880,6 +1035,15 @@ impl UnifiedApi {
 
             round2_packages.insert(sender_id, package);
         }
+
+        // Debug: Log package counts for Ed25519
+        tracing::info!(
+            "Ed25519 DKG part3: {} round1 packages, {} round2 packages (expected: {} and {})",
+            round1_packages.len(),
+            round2_packages.len(),
+            self.config.max_signers - 1,
+            self.config.max_signers - 1
+        );
 
         // Run DKG part3 (finalize)
         let (key_package, pubkey_package) = match frost_ed25519::keys::dkg::part3(

@@ -119,12 +119,27 @@ impl MultiChainAggregatorApi {
                     curve_name
                 );
 
-                match super::dkg_orchestrator::orchestrate_dkg(
-                    &self.config.signer_urls(),
-                    &req.passphrase,
-                )
-                .await
-                {
+                // Choose the right orchestrator based on curve
+                let dkg_result = match chain {
+                    Chain::Bitcoin | Chain::Ethereum => {
+                        // secp256k1 DKG
+                        super::dkg_orchestrator::orchestrate_dkg(
+                            &self.config.signer_urls(),
+                            &req.passphrase,
+                        )
+                        .await
+                    }
+                    Chain::Solana => {
+                        // Ed25519 DKG
+                        super::dkg_orchestrator::orchestrate_dkg_ed25519(
+                            &self.config.signer_urls(),
+                            &req.passphrase,
+                        )
+                        .await
+                    }
+                };
+
+                match dkg_result {
                     Ok(pubkey) => {
                         tracing::info!(
                             "✅ DKG complete for {}, pubkey: {}...",
