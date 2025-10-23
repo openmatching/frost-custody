@@ -398,8 +398,8 @@ impl UnifiedApi {
             "DKG part3: {} round1 packages, {} round2 packages (expected: {} and {})",
             round1_packages.len(),
             round2_packages.len(),
-            self.config.max_signers - 1,  // Should be n-1 (exclude self)
-            self.config.max_signers - 1   // Should be n-1
+            self.config.max_signers - 1, // Should be n-1 (exclude self)
+            self.config.max_signers - 1  // Should be n-1
         );
 
         // Run DKG part3 (finalize)

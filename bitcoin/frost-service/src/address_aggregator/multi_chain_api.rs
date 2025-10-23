@@ -119,9 +119,18 @@ impl MultiChainAggregatorApi {
                     curve_name
                 );
 
-                match super::dkg_orchestrator::orchestrate_dkg(&self.config.signer_urls(), &req.passphrase).await {
+                match super::dkg_orchestrator::orchestrate_dkg(
+                    &self.config.signer_urls(),
+                    &req.passphrase,
+                )
+                .await
+                {
                     Ok(pubkey) => {
-                        tracing::info!("✅ DKG complete for {}, pubkey: {}...", curve_name, &pubkey[..16]);
+                        tracing::info!(
+                            "✅ DKG complete for {}, pubkey: {}...",
+                            curve_name,
+                            &pubkey[..16]
+                        );
                         pubkey
                     }
                     Err(e) => {
