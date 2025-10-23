@@ -5,7 +5,7 @@ use std::fs;
 
 #[derive(Debug, Deserialize)]
 pub struct ConfigFile {
-    pub network: NetworkConfig,
+    pub network: Option<NetworkConfig>,
     pub server: ServerConfig,
     #[serde(default)]
     pub node: Option<NodeConfig>,
@@ -33,12 +33,39 @@ pub struct NodeConfig {
     pub master_seed_hex: String,
     #[serde(default = "default_storage_path")]
     pub storage_path: String,
+    #[serde(default = "default_max_signers")]
+    pub max_signers: u16,
+    #[serde(default = "default_min_signers")]
+    pub min_signers: u16,
+}
+
+fn default_max_signers() -> u16 {
+    3
+}
+
+fn default_min_signers() -> u16 {
+    2
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AggregatorConfig {
     pub signer_nodes: Vec<String>,
     pub threshold: usize,
+    #[serde(default = "default_max_signers")]
+    pub max_signers: u16,
+    #[serde(default = "default_min_signers")]
+    pub min_signers: u16,
+}
+
+impl AggregatorConfig {
+    pub fn signer_urls(&self) -> &[String] {
+        &self.signer_nodes
+    }
+
+    pub fn network(&self) -> Network {
+        // Network comes from top-level config file
+        Network::Bitcoin // Will be passed from main
+    }
 }
 
 fn default_storage_path() -> String {
@@ -53,12 +80,15 @@ impl ConfigFile {
     }
 
     pub fn network(&self) -> Result<Network> {
-        match self.network.network_type.as_str() {
+        let Some(network) = &self.network else {
+            anyhow::bail!("Network not configured");
+        };
+        match network.network_type.as_str() {
             "bitcoin" => Ok(Network::Bitcoin),
             "testnet" => Ok(Network::Testnet),
             "signet" => Ok(Network::Signet),
             "regtest" => Ok(Network::Regtest),
-            _ => anyhow::bail!("Invalid network type: {}", self.network.network_type),
+            _ => anyhow::bail!("Invalid network type: {}", network.network_type),
         }
     }
 

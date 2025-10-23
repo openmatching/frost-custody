@@ -47,10 +47,11 @@ struct DkgFinalizeRequest {
 struct DkgFinalizeResponse {
     #[allow(dead_code)]
     success: bool,
-    address: String,
+    pubkey_hex: String, // Raw public key from signer (not address)
 }
 
-/// Orchestrate DKG across all signer nodes to generate new address
+/// Orchestrate DKG across all signer nodes to generate FROST keys
+/// Returns the raw public key (hex) - caller derives chain-specific addresses
 pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result<String> {
     let client = reqwest::Client::new();
 
@@ -145,13 +146,28 @@ pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result
 
     tracing::info!("✅ DKG Round 2 complete, packages distributed");
 
-    // DKG Finalize: Each node combines packages
+    // Debug: Show package distribution
+    for (i, packages) in all_round2_packages.iter().enumerate() {
+        tracing::info!(
+            "  Node {} will receive {} round2 packages",
+            i,
+            packages.len()
+        );
+    }
+
+    // DKG Finalize: Each node combines packages and stores FROST keys
     tracing::info!("DKG Finalize: Completing key generation");
 
-    let mut generated_address: Option<String> = None;
+    let mut pubkey_hex: Option<String> = None;
 
     for (i, url) in signer_urls.iter().enumerate() {
-        tracing::debug!("  Finalizing on node {} at {}", i, url);
+        tracing::info!(
+            "  Finalizing on node {} at {} ({} round1 packages, {} round2 packages)",
+            i,
+            url,
+            all_round1_packages.len(),
+            all_round2_packages[i].len()
+        );
 
         let resp = client
             .post(format!("{}/api/dkg/finalize", url))
@@ -174,16 +190,22 @@ pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result
             .await
             .context(format!("Failed to parse finalize response from node {}", i))?;
 
-        if generated_address.is_none() {
-            generated_address = Some(finalize_resp.address.clone());
+        // All nodes should return the same group public key
+        if pubkey_hex.is_none() {
+            pubkey_hex = Some(finalize_resp.pubkey_hex.clone());
         }
 
-        tracing::debug!("  ✅ Node {} finalized: {}", i, finalize_resp.address);
+        tracing::debug!(
+            "  ✅ Node {} finalized, pubkey: {}...",
+            i,
+            &finalize_resp.pubkey_hex[..16]
+        );
     }
 
-    let address = generated_address.context("No address generated")?;
+    let pubkey = pubkey_hex.context("No public key returned from DKG")?;
 
-    tracing::info!("✅ DKG Complete! Generated address: {}", address);
+    tracing::info!("✅ DKG Complete! Group pubkey: {}...", &pubkey[..16]);
 
-    Ok(address)
+    // Return raw public key - aggregator derives chain-specific addresses
+    Ok(pubkey)
 }

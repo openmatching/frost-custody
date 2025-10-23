@@ -67,7 +67,7 @@ services:
     networks:
       - frost-internal
 
-  # FROST Address Aggregator (port 6000, exposed to CEX, LOW RISK)
+  # FROST Address Aggregator (port 9000, exposed to CEX, LOW RISK)
   address-aggregator:
     image: frost-custody:latest
     container_name: address-aggregator
@@ -75,7 +75,7 @@ services:
     volumes:
       - ./address-config.toml:/etc/config.toml:ro
     ports:
-      - "6000:6000"
+      - "9000:9000"
     restart: unless-stopped
     networks:
       - frost-internal

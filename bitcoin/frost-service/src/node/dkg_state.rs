@@ -7,6 +7,8 @@ use std::sync::Mutex;
 pub struct DkgState {
     round1_secrets: Mutex<HashMap<String, frost::keys::dkg::round1::SecretPackage>>,
     round2_secrets: Mutex<HashMap<String, frost::keys::dkg::round2::SecretPackage>>,
+    // Generic storage for other curves (Ed25519, etc.) as serialized bytes
+    pub generic_secrets: Mutex<HashMap<String, Vec<u8>>>,
 }
 
 impl DkgState {
@@ -14,6 +16,7 @@ impl DkgState {
         Self {
             round1_secrets: Mutex::new(HashMap::new()),
             round2_secrets: Mutex::new(HashMap::new()),
+            generic_secrets: Mutex::new(HashMap::new()),
         }
     }
 

@@ -1,15 +1,13 @@
 // FROST signer node - handles DKG and signing rounds
 
-pub mod api;
 pub mod config;
 pub mod crypto;
 pub mod derivation;
+pub mod dkg_api;
 pub mod dkg_state;
-pub mod signer;
-pub mod storage;
+pub mod multi_storage;
 
 use anyhow::Result;
-use bitcoin::Network;
 use poem::{listener::TcpListener, Route, Server};
 use poem_openapi::OpenApiService;
 use std::sync::Arc;
@@ -17,26 +15,38 @@ use std::sync::Arc;
 pub async fn run(
     server_config: crate::config::ServerConfig,
     node_config: crate::config::NodeConfig,
-    network: Network,
 ) -> Result<()> {
-    // Load node configuration
-    let frost_config = config::FrostNode::from_node_config(node_config, network)?;
+    // Load node configuration (network is ignored - signers are chain-agnostic)
+    let frost_config = config::FrostNode::from_node_config(node_config)?;
 
     tracing::info!("✅ DKG state initialized");
-    tracing::info!("Starting FROST signer node {}", frost_config.node_index);
-    tracing::info!("Network: {}", network);
+    tracing::info!(
+        "Starting FROST multi-chain signer node {}",
+        frost_config.node_index
+    );
+    tracing::info!("Supported curves: secp256k1, Ed25519");
 
-    // Create API
-    let api_service = OpenApiService::new(
-        api::Api {
-            config: Arc::new(frost_config.clone()),
-            storage: frost_config.share_storage.clone(),
-            dkg_state: Arc::new(dkg_state::DkgState::new()),
-        },
-        "FROST Signer Node",
-        "1.0",
-    )
-    .server(format!("http://{}:{}", server_config.host, server_config.port));
+    // Create multi-curve storage
+    let multi_storage = Arc::new(multi_storage::MultiCurveStorage::open(
+        &frost_config.storage_path,
+    )?);
+    tracing::info!("✅ Multi-curve storage opened");
+
+    // Create shared DKG state
+    let dkg_state = Arc::new(dkg_state::DkgState::new());
+
+    // Create unified API (pubkey queries + DKG + FROST signing all in one)
+    let api = dkg_api::UnifiedApi {
+        config: Arc::new(frost_config.clone()),
+        storage: multi_storage,
+        dkg_state,
+    };
+
+    // Single unified API service
+    let api_service = OpenApiService::new(api, "FROST Signer Node", "2.0").server(format!(
+        "http://{}:{}",
+        server_config.host, server_config.port
+    ));
 
     let ui = api_service.rapidoc();
     let spec = api_service.spec_endpoint();
@@ -46,9 +56,20 @@ pub async fn run(
         .nest("/docs", ui)
         .nest("/spec", spec);
 
-    tracing::info!("FROST signer listening on {}:{}", server_config.host, server_config.port);
-    tracing::info!("API documentation: http://{}:{}/docs", server_config.host, server_config.port);
-    tracing::info!("OpenAPI spec: http://{}:{}/spec", server_config.host, server_config.port);
+    tracing::info!(
+        "🚀 FROST signer node {} listening on {}:{}",
+        frost_config.node_index,
+        server_config.host,
+        server_config.port
+    );
+    tracing::info!("   📊 GET /api/curve/secp256k1/pubkey?passphrase=<uuid>");
+    tracing::info!("   🔧 POST /api/dkg/round1|round2|finalize (DKG protocol)");
+    tracing::info!("   ✍️  POST /api/frost/round1|round2|aggregate (FROST signing)");
+    tracing::info!(
+        "   📖 Documentation: http://{}:{}/docs",
+        server_config.host,
+        server_config.port
+    );
 
     Server::new(TcpListener::bind(format!(
         "{}:{}",

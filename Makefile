@@ -64,7 +64,7 @@ test-multisig:
 
 test-frost:
 	@echo "Testing FROST address aggregator API..."
-	curl -s 'http://127.0.0.1:6000/health' | jq .
+	curl -s 'http://127.0.0.1:9000/health' | jq .
 	@echo ""
 	@echo "Testing FROST signing aggregator API..."
 	curl -s 'http://127.0.0.1:8000/health' | jq .

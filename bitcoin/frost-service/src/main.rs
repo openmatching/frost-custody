@@ -1,9 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::env;
 
 mod address_aggregator;
 mod common;
 mod config;
+mod curves;
 mod node;
 mod signing_aggregator;
 
@@ -24,27 +25,24 @@ async fn main() -> Result<()> {
     let config = config::ConfigFile::load(&config_path)?;
     config.validate()?;
 
-    let network = config.network()?;
-
     // Dispatch based on role
     match config.server.role.as_str() {
         "node" => {
             tracing::info!("Starting FROST Service in NODE mode");
-            tracing::info!("Network: {}", network);
 
             let node_config = config.node.expect("Node config validated");
-            node::run(config.server, node_config, network).await
+            node::run(config.server, node_config).await
         }
         "address" => {
-            tracing::info!("Starting FROST Service in ADDRESS AGGREGATOR mode");
+            tracing::info!("Starting ADDRESS AGGREGATOR mode (DKG orchestration)");
+            let network = config.network()?;
             tracing::info!("Network: {}", network);
 
             let agg_config = config.aggregator.expect("Aggregator config validated");
             address_aggregator::run(config.server, agg_config).await
         }
         "signer" => {
-            tracing::info!("Starting FROST Service in SIGNING AGGREGATOR mode");
-            tracing::info!("Network: {}", network);
+            tracing::info!("Starting SIGNING AGGREGATOR mode (FROST signing orchestration)");
 
             let agg_config = config.aggregator.expect("Aggregator config validated");
             signing_aggregator::run(config.server, agg_config).await
