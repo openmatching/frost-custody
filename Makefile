@@ -26,8 +26,8 @@ up-multisig:
 	docker-compose up -d multisig-node0 multisig-node1 multisig-node2
 
 up-frost:
-	@echo "Starting FROST aggregator + signers (port 5000)..."
-	docker-compose up -d frost-node0 frost-node1 frost-node2 frost-aggregator
+	@echo "Starting FROST services (nodes + aggregators)..."
+	docker-compose up -d frost-node0 frost-node1 frost-node2 address-aggregator signing-aggregator
 
 up-all:
 	@echo "Starting all services..."
@@ -41,7 +41,13 @@ logs:
 	docker-compose logs -f
 
 logs-frost:
-	docker-compose logs -f frost-aggregator
+	docker-compose logs -f address-aggregator signing-aggregator
+
+logs-address:
+	docker-compose logs -f address-aggregator
+
+logs-signing:
+	docker-compose logs -f signing-aggregator
 
 logs-multisig:
 	docker-compose logs -f multisig-node0
@@ -57,8 +63,11 @@ test-multisig:
 	curl -s 'http://127.0.0.1:3000/health' | jq .
 
 test-frost:
-	@echo "Testing FROST aggregator API..."
+	@echo "Testing FROST address aggregator API..."
 	curl -s 'http://127.0.0.1:6000/health' | jq .
+	@echo ""
+	@echo "Testing FROST signing aggregator API..."
+	curl -s 'http://127.0.0.1:8000/health' | jq .
 
 clippy:
 	@echo "Running clippy on workspace (warnings as errors)..."

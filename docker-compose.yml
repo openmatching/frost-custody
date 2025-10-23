@@ -41,17 +41,18 @@ services:
   frost-node0:
     image: frost-custody:latest
     container_name: frost-signer-node-0
-    entrypoint: ["frost-signer"]
+    entrypoint: ["frost-service"]
     volumes:
       - ./frost-config-node0.toml:/etc/config.toml:ro
     networks:
       - frost-internal
     # No external ports - only aggregator can reach
+    # role = "node" in config
 
   frost-node1:
     image: frost-custody:latest
     container_name: frost-signer-node-1
-    entrypoint: ["frost-signer"]
+    entrypoint: ["frost-service"]
     volumes:
       - ./frost-config-node1.toml:/etc/config.toml:ro
     networks:
@@ -60,19 +61,19 @@ services:
   frost-node2:
     image: frost-custody:latest
     container_name: frost-signer-node-2
-    entrypoint: ["frost-signer"]
+    entrypoint: ["frost-service"]
     volumes:
       - ./frost-config-node2.toml:/etc/config.toml:ro
     networks:
       - frost-internal
 
-  # FROST Aggregator (port 6000, exposed to CEX)
-  frost-aggregator:
+  # FROST Address Aggregator (port 6000, exposed to CEX, LOW RISK)
+  address-aggregator:
     image: frost-custody:latest
-    container_name: frost-aggregator
-    entrypoint: ["frost-aggregator"]
+    container_name: address-aggregator
+    entrypoint: ["frost-service"]
     volumes:
-      - ./aggregator-config.toml:/etc/config.toml:ro
+      - ./address-config.toml:/etc/config.toml:ro
     ports:
       - "6000:6000"
     restart: unless-stopped
@@ -83,6 +84,26 @@ services:
       - frost-node0
       - frost-node1
       - frost-node2
+    # role = "address" in config
+
+  # FROST Signing Aggregator (port 8000, HIGH RISK - RESTRICT ACCESS!)
+  signing-aggregator:
+    image: frost-custody:latest
+    container_name: signing-aggregator
+    entrypoint: ["frost-service"]
+    volumes:
+      - ./signing-config.toml:/etc/config.toml:ro
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - frost-internal
+      - cex-network
+    depends_on:
+      - frost-node0
+      - frost-node1
+      - frost-node2
+    # role = "signer" in config
 
 networks:
   signer-net:

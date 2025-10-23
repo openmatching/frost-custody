@@ -37,7 +37,7 @@ fn main() -> Result<()> {
 
     // Generate keys using trusted dealer
     let rng = OsRng;
-    let (shares, pubkey_package) = frost::keys::generate_with_dealer(
+    let (shares, _pubkey_package) = frost::keys::generate_with_dealer(
         max_signers,
         min_signers,
         frost::keys::IdentifierList::Default,
@@ -53,12 +53,7 @@ fn main() -> Result<()> {
         key_packages.insert(identifier, key_package);
     }
 
-    // Serialize public key package (shared across all nodes)
-    let pubkey_json = serde_json::to_vec(&pubkey_package)?;
-    let pubkey_hex = hex::encode(&pubkey_json);
-
-    println!("=== GROUP PUBLIC KEY (share with all nodes) ===");
-    println!("{}\n", pubkey_hex);
+    println!("=== FROST KEY PACKAGES ===\n");
 
     // Output each key package
     for (idx, (identifier, key_package)) in key_packages.iter().enumerate() {
@@ -75,18 +70,22 @@ fn main() -> Result<()> {
         println!("---");
         println!("[frost]");
         println!("node_index = {}", idx);
-        println!("min_signers = {}", min_signers);
-        println!("max_signers = {}", max_signers);
-        println!("key_package_hex = \"{}\"", key_hex);
-        println!("pubkey_package_hex = \"{}\"", pubkey_hex);
+        println!("master_seed_hex = \"{}\"", key_hex);
+        println!("storage_path = \"./data/frost-shares-node{}\"", idx);
         println!("---\n");
     }
 
     println!("⚠️  IMPORTANT:");
-    println!("  1. Each node gets its own key_package_hex (keep secret!)");
-    println!("  2. All nodes share the same pubkey_package_hex");
-    println!("  3. Store securely - losing keys = losing funds");
-    println!("  4. Backup all {} key packages separately", max_signers);
+    println!("  1. Each node gets its own master_seed_hex (keep secret!)");
+    println!("  2. master_seed_hex is used to deterministically derive FROST shares");
+    println!(
+        "  3. Backup all {} master seeds separately (BIP39 mnemonics recommended)",
+        max_signers
+    );
+    println!("  4. Shares are stored in RocksDB (cache) and regenerated from master seed");
+    println!();
+    println!("💡 Note: pubkey_package is no longer in config!");
+    println!("   It's stored in RocksDB and regenerated during DKG.");
     println!();
     println!("Usage:");
     println!("  cargo run --bin frost-keygen           # Default 2-of-3");

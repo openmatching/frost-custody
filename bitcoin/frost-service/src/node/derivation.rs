@@ -46,7 +46,7 @@ pub fn dkg_part1(
 /// Tries cache first, falls back to error (DKG must be triggered via aggregator)
 pub fn get_or_derive_share(
     passphrase: &str,
-    cache: &crate::storage::ShareStorage,
+    cache: &crate::node::storage::ShareStorage,
 ) -> Result<(frost::keys::KeyPackage, frost::keys::PublicKeyPackage)> {
     // Try cache first
     if let Some(key_pkg) = cache.get_key_package(passphrase)? {

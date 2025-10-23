@@ -3,7 +3,7 @@ use frost_secp256k1_tr as frost;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::config::FrostNode;
+use crate::node::config::FrostNode;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(dead_code)]

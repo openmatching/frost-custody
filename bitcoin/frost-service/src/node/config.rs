@@ -6,7 +6,7 @@ use serde::Deserialize;
 use std::fs;
 use std::sync::Arc;
 
-use crate::storage::ShareStorage;
+use crate::node::storage::ShareStorage;
 
 #[derive(Debug, Deserialize)]
 pub struct ConfigFile {
@@ -41,6 +41,7 @@ pub struct ServerConfig {
     pub port: u16,
 }
 
+#[derive(Clone)]
 pub struct FrostNode {
     pub network: Network,
     pub node_index: u16,
@@ -50,6 +51,32 @@ pub struct FrostNode {
 }
 
 impl FrostNode {
+    pub fn from_node_config(
+        node_config: crate::config::NodeConfig,
+        network: Network,
+    ) -> Result<Self> {
+        // Decode master seed
+        let master_seed = hex::decode(&node_config.master_seed_hex)
+            .context("Invalid master_seed_hex")?;
+
+        tracing::info!("✅ Master seed loaded (can recover all shares from this + passphrases)");
+
+        // Open share storage
+        let share_storage = Arc::new(
+            ShareStorage::open(&node_config.storage_path)
+                .context("Failed to open share storage")?,
+        );
+
+        tracing::info!("✅ Share storage opened");
+
+        Ok(Self {
+            network,
+            node_index: node_config.node_index,
+            share_storage,
+            master_seed,
+        })
+    }
+
     pub fn load(path: &str) -> Result<Self> {
         let content =
             fs::read_to_string(path).context(format!("Failed to read config file: {}", path))?;
@@ -86,7 +113,7 @@ impl FrostNode {
     pub fn get_taproot_address(&self, passphrase: &str) -> Result<String> {
         // Get or derive shares for this passphrase
         let (_key_pkg, pubkey_pkg) =
-            crate::derivation::get_or_derive_share(passphrase, &self.share_storage)?;
+            crate::node::derivation::get_or_derive_share(passphrase, &self.share_storage)?;
 
         // Get the derived group public key for this passphrase
         let group_pubkey = pubkey_pkg.verifying_key();

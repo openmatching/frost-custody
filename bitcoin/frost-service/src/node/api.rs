@@ -3,12 +3,12 @@ use poem_openapi::payload::Json;
 use poem_openapi::{ApiResponse, Object, OpenApi};
 use std::sync::Arc;
 
-use crate::config::FrostNode;
+use crate::node::config::FrostNode;
 
 pub struct Api {
     pub config: Arc<FrostNode>,
-    pub storage: Arc<crate::storage::ShareStorage>,
-    pub dkg_state: Arc<crate::dkg_state::DkgState>,
+    pub storage: Arc<crate::node::storage::ShareStorage>,
+    pub dkg_state: Arc<crate::node::dkg_state::DkgState>,
 }
 
 #[derive(Debug, Object)]
@@ -260,7 +260,7 @@ impl Api {
             }
         };
 
-        match crate::signer::generate_commitments(&self.config, &req.passphrase) {
+        match super::signer::generate_commitments(&self.config, &req.passphrase) {
             Ok((identifier, nonces, commitments)) => {
                 // Encode identifier
                 let identifier_hex = hex::encode(identifier.serialize());
@@ -270,7 +270,7 @@ impl Api {
 
                 // Serialize and encrypt nonces (bound to message)
                 let nonces_json = serde_json::to_vec(&nonces).unwrap();
-                let encrypted_nonces = match crate::crypto::encrypt_nonces(
+                let encrypted_nonces = match super::crypto::encrypt_nonces(
                     &nonces_json,
                     &message,
                     &self.config.master_seed,
@@ -312,7 +312,7 @@ impl Api {
         };
 
         // Decrypt nonces (verifies message binding)
-        let nonces_json = match crate::crypto::decrypt_nonces(
+        let nonces_json = match super::crypto::decrypt_nonces(
             &req.encrypted_nonces,
             &message,
             &self.config.master_seed,
@@ -377,7 +377,7 @@ impl Api {
         let identifier_hex = hex::encode(key_package.identifier().serialize());
 
         // Sign
-        match crate::signer::sign_with_commitments(
+        match super::signer::sign_with_commitments(
             &self.config,
             &req.passphrase,
             &message,
@@ -465,7 +465,7 @@ impl Api {
         }
 
         // Aggregate
-        match crate::signer::aggregate_signature(
+        match super::signer::aggregate_signature(
             &self.config,
             &req.passphrase,
             &message,
@@ -474,7 +474,7 @@ impl Api {
         ) {
             Ok(signature) => {
                 // Verify signature
-                let verified = crate::signer::verify_signature(
+                let verified = super::signer::verify_signature(
                     &self.config,
                     &req.passphrase,
                     &message,
@@ -506,7 +506,7 @@ impl Api {
         tracing::info!("DKG Round 1 for passphrase");
 
         // Generate round1 package with deterministic RNG
-        match crate::derivation::dkg_part1(
+        match crate::node::derivation::dkg_part1(
             &self.config.master_seed,
             &passphrase,
             self.config.node_index,

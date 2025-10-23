@@ -1,10 +1,5 @@
 [workspace]
-members = [
-    "bitcoin/multisig-signer",
-    "bitcoin/frost-signer",
-    "bitcoin/frost-aggregator",
-    "client",
-]
+members = ["bitcoin/multisig-signer", "bitcoin/frost-service", "client"]
 resolver = "2"
 
 [workspace.package]

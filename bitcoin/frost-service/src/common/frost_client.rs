@@ -5,7 +5,15 @@ use bitcoin::sighash::{Prevouts, SighashCache, TapSighashType};
 use bitcoin::taproot::Signature as TaprootSignature;
 use serde::{Deserialize, Serialize};
 
-use crate::api::NodeHealthStatus;
+// NodeHealthStatus is defined in each aggregator's api module
+// We'll redefine it here to avoid circular dependencies
+
+#[derive(Debug, Clone)]
+pub struct NodeHealthStatus {
+    pub url: String,
+    pub healthy: bool,
+    pub error: Option<String>,
+}
 
 #[derive(Serialize)]
 struct Round1Request {
