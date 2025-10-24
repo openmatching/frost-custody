@@ -1,0 +1,266 @@
+%-----------------------------------------------------------------------------------------------------------------------------------------------%
+%	The MIT License (MIT)
+%
+%	Copyright (c) 2021 Jitin Nair
+%
+%	Permission is hereby granted, free of charge, to any person obtaining a copy
+%	of this software and associated documentation files (the "Software"), to deal
+%	in the Software without restriction, including without limitation the rights
+%	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+%	copies of the Software, and to permit persons to whom the Software is
+%	furnished to do so, subject to the following conditions:
+%	
+%	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+%	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+%	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+%	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+%	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+%	THE SOFTWARE.
+%	
+%
+%-----------------------------------------------------------------------------------------------------------------------------------------------%
+
+%----------------------------------------------------------------------------------------
+%	DOCUMENT DEFINITION
+%----------------------------------------------------------------------------------------
+
+% article class because we want to fully customize the page and not use a cv template
+\documentclass[a4paper,12pt]{article}
+
+%----------------------------------------------------------------------------------------
+%	FONT
+%----------------------------------------------------------------------------------------
+
+% % fontspec allows you to use TTF/OTF fonts directly
+% \usepackage{fontspec}
+% \defaultfontfeatures{Ligatures=TeX}
+
+% % modified for ShareLaTeX use
+% \setmainfont[
+% SmallCapsFont = Fontin-SmallCaps.otf,
+% BoldFont = Fontin-Bold.otf,
+% ItalicFont = Fontin-Italic.otf
+% ]
+% {Fontin.otf}
+
+%----------------------------------------------------------------------------------------
+%	PACKAGES
+%----------------------------------------------------------------------------------------
+\usepackage{url}
+\usepackage{parskip} 	
+
+%other packages for formatting
+\RequirePackage{color}
+\RequirePackage{graphicx}
+\usepackage[usenames,dvipsnames]{xcolor}
+\usepackage[scale=0.9]{geometry}
+
+%tabularx environment
+\usepackage{tabularx}
+
+%for lists within experience section
+\usepackage{enumitem}
+
+% centered version of 'X' col. type
+\newcolumntype{C}{>{\centering\arraybackslash}X} 
+
+%to prevent spillover of tabular into next pages
+\usepackage{supertabular}
+\usepackage{tabularx}
+\newlength{\fullcollw}
+\setlength{\fullcollw}{0.47\textwidth}
+
+%custom \section
+\usepackage{titlesec}				
+\usepackage{multicol}
+\usepackage{multirow}
+
+%CV Sections inspired by: 
+%http://stefano.italians.nl/archives/26
+\titleformat{\section}{\Large\scshape\raggedright}{}{0em}{}[\titlerule]
+\titlespacing{\section}{0pt}{10pt}{10pt}
+
+%for publications
+\usepackage[style=authoryear,sorting=ynt, maxbibnames=2]{biblatex}
+
+%Setup hyperref package, and colours for links
+\usepackage[unicode, draft=false]{hyperref}
+\definecolor{linkcolour}{rgb}{0,0.2,0.6}
+\hypersetup{colorlinks,breaklinks,urlcolor=linkcolour,linkcolor=linkcolour}
+\addbibresource{citations.bib}
+\setlength\bibitemsep{1em}
+
+%for social icons
+\usepackage{fontawesome5}
+
+%debug page outer frames
+%\usepackage{showframe}
+
+
+% job listing environments
+\newenvironment{jobshort}[2]
+    {
+    \begin{tabularx}{\linewidth}{@{}l X r@{}}
+    \textbf{#1} & \hfill &  #2 \\[3.75pt]
+    \end{tabularx}
+    }
+    {
+    }
+
+\newenvironment{joblong}[2]
+    {
+    \begin{tabularx}{\linewidth}{@{}l X r@{}}
+    \textbf{#1} & \hfill &  #2 \\[3.75pt]
+    \end{tabularx}
+    \begin{minipage}[t]{\linewidth}
+    \begin{itemize}[nosep,after=\strut, leftmargin=1em, itemsep=3pt,label=--]
+    }
+    {
+    \end{itemize}
+    \end{minipage}    
+    }
+
+
+
+%----------------------------------------------------------------------------------------
+%	BEGIN DOCUMENT
+%----------------------------------------------------------------------------------------
+\begin{document}
+
+% non-numbered pages
+\pagestyle{empty} 
+
+%----------------------------------------------------------------------------------------
+%	TITLE
+%----------------------------------------------------------------------------------------
+
+% \begin{tabularx}{\linewidth}{ @{}X X@{} }
+% \huge{Your Name}\vspace{2pt} & \hfill \emoji{incoming-envelope} email@email.com \\
+% \raisebox{-0.05\height}\faGithub\ username \ | \
+% \raisebox{-0.00\height}\faLinkedin\ username \ | \ \raisebox{-0.05\height}\faGlobe \ mysite.com  & \hfill \emoji{calling} number
+% \end{tabularx}
+
+\begin{tabularx}{\linewidth}{@{} C @{}}
+\Huge{Ming Yang} \\[7.5pt]
+\href{https://github.com/mingyang91}{\raisebox{-0.05\height}\faGithub\ mingyang91} \ $|$ \ 
+\href{https://www.zhihu.com/people/mingyang91}{\raisebox{-0.05\height}\faGlobe \ Zhihu} \ $|$ \ 
+\href{https://famer.me/}{\raisebox{-0.05\height}\faGlobe \ famer.me} \ $|$ \ 
+\href{mailto:mingyang91@qq.com}{\raisebox{-0.05\height}\faEnvelope \ mingyang91@qq.com} \ $|$ \ 
+\href{tel:+8618615462063}{\raisebox{-0.05\height}\faMobile \ +86-186-1546-2063} \\
+\end{tabularx}
+
+%----------------------------------------------------------------------------------------
+% EXPERIENCE SECTIONS
+%----------------------------------------------------------------------------------------
+
+%Interests/ Keywords/ Summary
+\section{Summary}
+Senior Developer with 13 years of experience. Highly proficient in Kotlin, Scala, Rust and TypeScript, with good skills in Go. Extensive expertise in DevOps (Kubernetes, AWS), Reactive Systems, Asynchronous and Parallel Programming. Strong background in building cloud native systems and distributed systems. Community speaker at Scala Meetup (2020) and KotlinConf Global 2024 Shanghai. Solid foundation in Mathematics, Computer Science, Backend and Frontend development. BSc (Hons) Computer Science from University of East London.
+
+%Experience
+\section{Work Experience}
+
+\begin{joblong}{Senior Rust Developer \& Architect at BiHelix}{Apr 2024 - Present}
+\item \textbf{PoW Verification WASM Gateway:} Designed and implemented a WASM firewall application with tiered rate limiting and PoW verification to handle malicious attacks during project launches, protecting legitimate users while blocking farming operations
+\item \textbf{Centralized Wallet:} Led complete rewrite of centralized wallet system using ledger model design, eliminating all financial and security vulnerabilities. Integrated distributed tracing (Jaeger) and metrics (Prometheus) for enhanced observability
+\end{joblong}
+
+\begin{joblong}{System Architect at Vitongue - Tonomous}{Jul 2023 - Apr 2024}
+\item \textbf{Smart Surveillance:} Designed and implemented complete drone monitoring system in Kotlin, including VPC design, Kubernetes deployment, and computer vision integration using context receivers, Ktor, ArrowKt, and coroutines
+\item \textbf{Simultaneous Interpretation:} Developed voice-to-voice translator module optimizing transcription, translation, and TTS pipeline to eliminate redundancy. Created lip-sync solution using three.js for human 3D models
+\end{joblong}
+
+\begin{joblong}{Architect at coScene}{Feb 2023 - Jul 2023}
+\item Designed multimodal scene data platform for robotic R\&D and operations
+\item Proposed real-time event subscription architecture for data list displays
+\item Implemented file tree and version management in PostgreSQL using ltree
+\item Published design decisions and technical findings on personal blog
+\end{joblong}
+
+\begin{joblong}{Senior Engineer at Shanghai Rangchuan Information Technology}{Apr 2016 - Jan 2023}
+\item \textbf{K/V Storage (Scala):} Developed low-latency K/V storage with time travel using Akka. Supports 100+ nodes, 10B+ K/V pairs, 1k+ QPS with CQRS/ES pattern, GraphQL interface, and OpenTelemetry distributed tracing
+\item \textbf{Backend (Scala):} Migrated NodeJS to Scala with pure FP and ADTs. Replaced Future with ZIO reducing CPU from 10 cores to 0.5 core. Serving 3,000+ tenants with compile-time safe JSON codec using Circe and Shapeless
+\item \textbf{Infrastructure:} Built and maintained Kubernetes cluster from v1.6 across AWS VPC and local infrastructure supporting all business and ML needs
+\item \textbf{River (Scala):} Developed CDC middleware parsing PostgreSQL WAL to ElasticSearch/Kafka using Akka Stream and parser combinators
+\item \textbf{CLI Tools:} Created parallel multi-format decompression tool using GraalVM Native Image for cloud native platforms
+\end{joblong}
+
+\begin{jobshort}{Team Lead at Neusoft Carrier}{Sep 2014 - Mar 2016}
+Led team of three front-end developers doing full-stack development using NodeJS
+\end{jobshort}
+
+%Personal Projects
+\section{Personal Projects}
+
+\begin{tabularx}{\linewidth}{ @{}l r@{} }
+\textbf{FROST Custody} & \hfill \href{https://github.com/openmatching/frost-custody}{GitHub} \\[3.75pt]
+\multicolumn{2}{@{}X@{}}{Distributed threshold signature scheme (FROST) implementation for multi-chain cryptocurrency custody. Supports Bitcoin (Schnorr/Taproot), Ethereum (ECDSA), and Solana (Ed25519) with chain-agnostic signer nodes. Features deterministic key generation, m-of-n threshold signatures, and PSBT signing. Built with Rust for production-grade security and performance.}  \\
+\end{tabularx}
+
+\begin{tabularx}{\linewidth}{ @{}l r@{} }
+\textbf{OpenMatching Engine} & \hfill \href{https://github.com/openmatching/openmatching}{GitHub} \\[3.75pt]
+\multicolumn{2}{@{}X@{}}{High-performance matching engine written in Rust achieving 110,000+ TPS (transactions per second). Designed for cryptocurrency exchanges and trading platforms with ultra-low latency order matching, multiple persistence backends (PostgreSQL, RocksDB), and scalable architecture for high-frequency trading systems.}  \\
+\end{tabularx}
+  
+%Community & Publications
+\section{Community Contributions}
+
+\begin{tabularx}{\linewidth}{ @{}l r@{} }
+\textbf{Open Source OS Community} & \hfill \href{https://meeting.tencent.com/crm/KWPJqQYzf9}{Oct 2025} \\[3.75pt]
+\multicolumn{2}{@{}X@{}}{Invited speaker on "Asynchronous Network Driver Development", recommended by Professor Xiang Yong from Tsinghua University}  \\
+\end{tabularx}
+
+\begin{tabularx}{\linewidth}{ @{}l r@{} }
+\textbf{Tsinghua University OS Course Graduation} & \hfill \href{https://opencamp.cn/os2edu/student/camp/2025spring/excellent}{Jun 2025} \\[3.75pt]
+\multicolumn{2}{@{}X@{}}{Outstanding student representative selected by Professors Chen Yu and Xiang Yong to share experience at graduation ceremony}  \\
+\end{tabularx}
+
+\begin{tabularx}{\linewidth}{ @{}l r@{} }
+\textbf{KotlinConf Global 2024 Shanghai} & \hfill \href{https://www.bilibili.com/video/BV1hxbNeaEJY}{Jun 2024} \\[3.75pt]
+\multicolumn{2}{@{}X@{}}{"Using context receivers and suspend to develop modern software using idiomatic Kotlin"}  \\
+\end{tabularx}
+
+\begin{tabularx}{\linewidth}{ @{}l r@{} }
+\textbf{Scala Meetup Shanghai} & \hfill \href{https://www.bilibili.com/video/BV1Qa4y1L7dj}{Sep 2020} \\[3.75pt]
+\multicolumn{2}{@{}X@{}}{"ZIO Introduction" - Shared experience on replacing Future with ZIO and performance improvements}  \\
+\end{tabularx}
+
+\begin{tabularx}{\linewidth}{ @{}l r@{} }
+\textbf{Technical Blog} & \hfill \href{https://famer.me/}{famer.me} \\[3.75pt]
+\multicolumn{2}{@{}X@{}}{Regular technical articles on distributed systems, PostgreSQL, event-driven architectures, and modern programming practices}  \\
+\end{tabularx}
+
+%----------------------------------------------------------------------------------------
+%	EDUCATION
+%----------------------------------------------------------------------------------------
+\section{Education}
+\begin{tabularx}{\linewidth}{@{}l X@{}}	
+BSc (Hons) Computer Science & \textbf{University of East London} \\
+\end{tabularx}
+
+\section{Continuous Learning}
+\begin{tabularx}{\linewidth}{@{}l X@{}}	
+Operating Systems & \textbf{Tsinghua University} - \textbf{Ranked 1st overall}, \href{https://opencamp.cn/os2edu/student/camp/2025spring/excellent}{Outstanding Student} (2025) \\
+Combinatorics & Certificate from XuetangX \href{https://v1-www.xuetangx.com/download_credential/DaVObVx0vXL.pdf}{(Link)} \\
+SICP & Structure and Interpretation of Computer Programs \\
+\end{tabularx}
+
+%----------------------------------------------------------------------------------------
+%	SKILLS
+%----------------------------------------------------------------------------------------
+\section{Skills}
+\begin{tabularx}{\linewidth}{@{}l X@{}}
+Languages &  \normalsize{Scala, Rust, Kotlin, TypeScript, Java, Go, Python}\\
+Backend  &  \normalsize{NodeJS, Akka, Next.js, Prisma, Ktor, Play Framework}\\
+Frameworks & \normalsize{Akka Stream, RxJS, React, ArrowKt, ZIO, Cats}\\
+Tools & \normalsize{GraalVM, gRPC, kotlinx.serialization, Shapeless, Circe}\\
+Databases &  \normalsize{PostgreSQL, Cassandra, Redis, ElasticSearch}\\
+DevOps & \normalsize{AWS, Kubernetes, Docker, Prometheus, Kafka, Jaeger, OpenTelemetry, Serverless, Istio}\\
+Specialties & \normalsize{Reactive Systems, Distributed Systems, Functional Programming, CQRS/ES, Cloud Native Architecture}\\
+\end{tabularx}
+
+\vfill
+\center{\footnotesize Last updated: \today}
+
+\end{document}
