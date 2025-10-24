@@ -21,11 +21,11 @@ pub struct NetworkConfig {
     // Chain-specific network names (optional, defaults based on network_type)
     #[serde(default)]
     pub bitcoin_network: Option<String>, // "mainnet", "testnet", "signet", "regtest"
-    
+
     #[serde(default)]
     #[allow(dead_code)]
     pub ethereum_network: Option<String>, // "mainnet", "sepolia", "goerli", "holesky"
-    
+
     #[serde(default)]
     #[allow(dead_code)]
     pub solana_network: Option<String>, // "mainnet-beta", "testnet", "devnet"
