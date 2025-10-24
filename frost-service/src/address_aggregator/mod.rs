@@ -10,6 +10,7 @@ use std::sync::Arc;
 pub async fn run(
     server_config: crate::config::ServerConfig,
     aggregator_config: crate::config::AggregatorConfig,
+    network_config: Option<crate::config::NetworkConfig>,
 ) -> Result<()> {
     tracing::info!("Signer nodes: {:?}", aggregator_config.signer_nodes);
     tracing::info!(
@@ -18,9 +19,14 @@ pub async fn run(
         aggregator_config.signer_nodes.len()
     );
 
+    if let Some(ref net) = network_config {
+        tracing::info!("Network: {}", net.network_type);
+    }
+
     // Create multi-chain aggregator API
     let api = multi_chain_api::MultiChainAggregatorApi {
         config: Arc::new(aggregator_config),
+        network: Arc::new(network_config),
     };
 
     // Create API service

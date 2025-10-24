@@ -13,10 +13,64 @@ pub struct ConfigFile {
     pub aggregator: Option<AggregatorConfig>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct NetworkConfig {
     #[serde(rename = "type")]
-    pub network_type: String,
+    pub network_type: String, // "mainnet" or "testnet"
+
+    // Chain-specific network names (optional, defaults based on network_type)
+    #[serde(default)]
+    pub bitcoin_network: Option<String>, // "mainnet", "testnet", "signet", "regtest"
+
+    #[serde(default)]
+    pub ethereum_network: Option<String>, // "mainnet", "sepolia", "goerli", "holesky"
+
+    #[serde(default)]
+    pub solana_network: Option<String>, // "mainnet-beta", "testnet", "devnet"
+}
+
+impl NetworkConfig {
+    pub fn bitcoin_network(&self) -> Network {
+        let network_str = self
+            .bitcoin_network
+            .as_deref()
+            .unwrap_or(&self.network_type);
+
+        match network_str {
+            "mainnet" => Network::Bitcoin,
+            "testnet" => Network::Testnet,
+            "signet" => Network::Signet,
+            "regtest" => Network::Regtest,
+            _ => Network::Bitcoin, // Default to mainnet
+        }
+    }
+
+    pub fn ethereum_chain_id(&self) -> u64 {
+        let network_str = self
+            .ethereum_network
+            .as_deref()
+            .unwrap_or(&self.network_type);
+
+        match network_str {
+            "mainnet" => 1,
+            "sepolia" => 11155111,
+            "goerli" => 5,
+            "holesky" => 17000,
+            "testnet" => 11155111, // Default testnet = Sepolia
+            _ => 1,                // Default to mainnet
+        }
+    }
+
+    pub fn solana_cluster(&self) -> &str {
+        let network_str = self.solana_network.as_deref().unwrap_or(&self.network_type);
+
+        match network_str {
+            "mainnet" => "mainnet-beta",
+            "testnet" => "testnet",
+            "devnet" => "devnet",
+            _ => "mainnet-beta", // Default to mainnet
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,11 +117,6 @@ impl AggregatorConfig {
     pub fn signer_urls(&self) -> &[String] {
         &self.signer_nodes
     }
-
-    pub fn network(&self) -> Network {
-        // Network comes from top-level config file
-        Network::Bitcoin // Will be passed from main
-    }
 }
 
 fn default_storage_path() -> String {
@@ -79,19 +128,6 @@ impl ConfigFile {
         let content =
             fs::read_to_string(path).context(format!("Failed to read config file: {}", path))?;
         toml::from_str(&content).context("Failed to parse config file")
-    }
-
-    pub fn network(&self) -> Result<Network> {
-        let Some(network) = &self.network else {
-            anyhow::bail!("Network not configured");
-        };
-        match network.network_type.as_str() {
-            "bitcoin" => Ok(Network::Bitcoin),
-            "testnet" => Ok(Network::Testnet),
-            "signet" => Ok(Network::Signet),
-            "regtest" => Ok(Network::Regtest),
-            _ => anyhow::bail!("Invalid network type: {}", network.network_type),
-        }
     }
 
     pub fn validate(&self) -> Result<()> {

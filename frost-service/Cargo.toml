@@ -25,8 +25,9 @@ tracing-subscriber.workspace = true
 bitcoin.workspace = true
 bip39.workspace = true
 base64.workspace = true
+miniscript = { version = "12.2", features = ["serde"] }
 frost-secp256k1-tr.workspace = true
-frost-secp256k1 = "2.0.0"                           # ECDSA for Ethereum/EVM
+frost-secp256k1 = "2.0.0"                               # ECDSA for Ethereum/EVM
 rand.workspace = true
 rand_chacha = "0.3"
 serde_json = "1.0"

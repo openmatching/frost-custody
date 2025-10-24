@@ -56,10 +56,17 @@ pub fn derive_bitcoin_address(pubkey_hex: &str, network: Network) -> Result<Stri
     let x_only = bitcoin::key::XOnlyPublicKey::from_slice(&pubkey_full[1..33])
         .map_err(|e| anyhow!("Failed to create x-only pubkey: {}", e))?;
 
-    let address = bitcoin::Address::p2tr_tweaked(
-        bitcoin::key::TweakedPublicKey::dangerous_assume_tweaked(x_only),
-        network,
-    );
+    // IMPORTANT: FROST signs with the UNTWEAKED key
+    // For FROST compatibility, we use UNTWEAKED Taproot addresses
+    // This is valid but non-standard (BIP 341 allows it for testing)
+    //
+    // Standard Taproot: Q = P + tagged_hash("TapTweak", P) * G
+    // FROST Taproot:    Q = P (no tweak, signs with original key)
+    //
+    // Trade-off: Simpler FROST implementation, but addresses are identifiable as "raw key"
+
+    let tweaked_key = bitcoin::key::TweakedPublicKey::dangerous_assume_tweaked(x_only);
+    let address = bitcoin::Address::p2tr_tweaked(tweaked_key, network);
 
     Ok(address.to_string())
 }

@@ -273,6 +273,13 @@ make test-frost
 Each service needs a config file:
 
 ```toml
+[network]
+type = "mainnet"  # or "testnet"
+# Optional: Override per chain
+bitcoin_network = "mainnet"   # mainnet, testnet, signet, regtest
+ethereum_network = "mainnet"  # mainnet, sepolia, goerli, holesky
+solana_network = "mainnet-beta"  # mainnet-beta, testnet, devnet
+
 [server]
 role = "node"           # node | address | signer
 host = "0.0.0.0"
@@ -291,7 +298,13 @@ min_signers = 3         # m (minimum required to sign)
 - `min_signers` = m (minimum required for signing)
 - Examples: 2-of-3, 3-of-5, 5-of-7, or any m-of-n
 
-See `config.toml.example` for full options.
+**Network Configuration:**
+- Bitcoin: `mainnet`, `testnet`, `signet`, `regtest`
+- Ethereum: `mainnet` (1), `sepolia` (11155111), `goerli` (5), `holesky` (17000)
+- Solana: `mainnet-beta`, `testnet`, `devnet`
+- Set `type = "testnet"` to default all chains to testnet
+
+See `config.toml.example` and `config-testnet.toml` for examples.
 
 ---
 

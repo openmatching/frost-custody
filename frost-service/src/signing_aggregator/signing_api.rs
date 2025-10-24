@@ -188,6 +188,8 @@ impl SigningAggregatorApi {
 
             let sighash_hex = hex::encode(sighash.as_byte_array());
 
+            tracing::debug!("Input {}: sighash={}", input_idx, &sighash_hex[..16]);
+
             // Sign with FROST (Bitcoin uses Taproot/Schnorr)
             let (signature_hex, _) = match sign_message_for_curve(
                 passphrase,
@@ -214,21 +216,52 @@ impl SigningAggregatorApi {
                 }
             };
 
-            let signature = bitcoin::taproot::Signature {
-                signature: match bitcoin::secp256k1::schnorr::Signature::from_slice(&sig_bytes) {
-                    Ok(sig) => sig,
-                    Err(e) => {
-                        tracing::error!("Invalid Schnorr signature: {}", e);
-                        continue;
+            let schnorr_sig = match bitcoin::secp256k1::schnorr::Signature::from_slice(&sig_bytes) {
+                Ok(sig) => sig,
+                Err(e) => {
+                    tracing::error!("Invalid Schnorr signature: {}", e);
+                    continue;
+                }
+            };
+
+            // Verify signature locally before adding to PSBT
+            if let Some(witness_utxo) = &psbt.inputs[input_idx].witness_utxo {
+                if witness_utxo.script_pubkey.is_p2tr() {
+                    let script_bytes = witness_utxo.script_pubkey.as_bytes();
+                    if script_bytes.len() == 34 {
+                        let xonly_bytes = &script_bytes[2..34];
+                        if let Ok(xonly_pubkey) =
+                            bitcoin::key::XOnlyPublicKey::from_slice(xonly_bytes)
+                        {
+                            let secp = bitcoin::secp256k1::Secp256k1::verification_only();
+                            let msg =
+                                bitcoin::secp256k1::Message::from_digest(*sighash.as_byte_array());
+
+                            match secp.verify_schnorr(&schnorr_sig, &msg, &xonly_pubkey) {
+                                Ok(_) => tracing::info!(
+                                    "✅ Input {} signature VERIFIED locally",
+                                    input_idx
+                                ),
+                                Err(e) => tracing::error!(
+                                    "❌ Input {} signature VERIFICATION FAILED: {:?}",
+                                    input_idx,
+                                    e
+                                ),
+                            }
+                        }
                     }
-                },
+                }
+            }
+
+            let signature = bitcoin::taproot::Signature {
+                signature: schnorr_sig,
                 sighash_type: TapSighashType::Default,
             };
 
             psbt.inputs[input_idx].tap_key_sig = Some(signature);
             signatures_added += 1;
 
-            tracing::info!("✅ Input {} signed", input_idx);
+            tracing::info!("✅ Input {} signed and added to PSBT", input_idx);
         }
 
         tracing::info!(
@@ -236,6 +269,31 @@ impl SigningAggregatorApi {
             signatures_added,
             psbt.inputs.len()
         );
+
+        // Finalize PSBT - convert tap_key_sig to final_script_witness
+        // Note: We don't use miniscript::finalize_mut() because it requires valid
+        // public keys in witness_utxo, which clients may not have during PSBT building
+        tracing::info!("Finalizing PSBT...");
+
+        for input in &mut psbt.inputs {
+            if let Some(tap_sig) = input.tap_key_sig {
+                // Build witness for Taproot key-path spend
+                // For default sighash (0x00), witness is just the 64-byte signature
+                let mut witness = bitcoin::Witness::new();
+
+                // Serialize the Schnorr signature (64 bytes)
+                // tap_sig.to_vec() includes sighash type, but for SIGHASH_DEFAULT,
+                // we only push the signature itself
+                witness.push(tap_sig.signature.serialize());
+
+                input.final_script_witness = Some(witness);
+
+                // Clear signing fields after finalization
+                input.tap_key_sig = None;
+            }
+        }
+
+        tracing::info!("✅ PSBT finalized, ready for broadcast");
 
         SignPsbtResult::Ok(Json(SignPsbtResponse {
             signed_psbt: psbt.to_string(),

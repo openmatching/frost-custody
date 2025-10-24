@@ -34,11 +34,13 @@ async fn main() -> Result<()> {
         }
         "address" => {
             tracing::info!("Starting ADDRESS AGGREGATOR mode (DKG orchestration)");
-            let network = config.network()?;
-            tracing::info!("Network: {}", network);
+
+            if let Some(ref net) = config.network {
+                tracing::info!("Network type: {}", net.network_type);
+            }
 
             let agg_config = config.aggregator.expect("Aggregator config validated");
-            address_aggregator::run(config.server, agg_config).await
+            address_aggregator::run(config.server, agg_config, config.network).await
         }
         "signer" => {
             tracing::info!("Starting SIGNING AGGREGATOR mode (FROST signing orchestration)");

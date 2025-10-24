@@ -20,6 +20,7 @@ use crate::config::AggregatorConfig;
 
 pub struct MultiChainAggregatorApi {
     pub config: Arc<AggregatorConfig>,
+    pub network: Arc<Option<crate::config::NetworkConfig>>,
 }
 
 #[derive(Debug, Object)]
@@ -175,8 +176,15 @@ impl MultiChainAggregatorApi {
         }
 
         // Step 2: Derive chain-specific address from raw pubkey
+        let bitcoin_network = self
+            .network
+            .as_ref()
+            .as_ref()
+            .map(|n| n.bitcoin_network())
+            .unwrap_or(bitcoin::Network::Bitcoin);
+
         let address = match chain {
-            Chain::Bitcoin => match derive_bitcoin_address(&pubkey_hex, self.config.network()) {
+            Chain::Bitcoin => match derive_bitcoin_address(&pubkey_hex, bitcoin_network) {
                 Ok(addr) => addr,
                 Err(e) => {
                     return AddressResult::InternalError(Json(ErrorResponse {

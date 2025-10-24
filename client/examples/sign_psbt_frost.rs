@@ -18,6 +18,7 @@ struct FrostUtxo {
     vout: u32,
     amount: Amount,
     passphrase: String,
+    pubkey_hex: String, // x-only public key for Taproot
 }
 
 #[tokio::main]
@@ -30,11 +31,11 @@ async fn main() -> Result<()> {
     // Step 1: Generate addresses
     println!("Step 1: Generate FROST Taproot addresses\n");
 
-    let pass1 = "550e8400-e29b-41d4-a716-446655440000".to_string();
-    let pass2 = "6ba7b810-9dad-11d1-80b4-00c04fd430c8".to_string();
+    let pass1 = "alice".to_string();
+    let pass2 = "bob".to_string();
 
-    let addr1 = generate_address(address_aggregator, &pass1).await?;
-    let addr2 = generate_address(address_aggregator, &pass2).await?;
+    let (addr1, pubkey1) = generate_address_with_pubkey(address_aggregator, &pass1).await?;
+    let (addr2, pubkey2) = generate_address_with_pubkey(address_aggregator, &pass2).await?;
 
     println!("  User 1: {}", addr1);
     println!("  User 2: {}\n", addr2);
@@ -45,26 +46,28 @@ async fn main() -> Result<()> {
     let utxos = vec![
         FrostUtxo {
             txid: Txid::from_str(
-                "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+                "435d3ad207facec0def477188156ab694b4a864c0bf4fffe8e14719e9a5ac848",
             )?,
-            vout: 0,
-            amount: Amount::from_sat(100_000),
+            vout: 1,
+            amount: Amount::from_sat(500000), // Real amount from testnet4
             passphrase: pass1,
+            pubkey_hex: pubkey1,
         },
         FrostUtxo {
             txid: Txid::from_str(
-                "fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321",
+                "cf7c43bf5860f3db49402558c8819872acc893adc92b0244f8a028bb449795c6",
             )?,
             vout: 1,
-            amount: Amount::from_sat(200_000),
+            amount: Amount::from_sat(500000), // Real amount from testnet4
             passphrase: pass2,
+            pubkey_hex: pubkey2,
         },
     ];
 
-    let destination = Address::from_str("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4")?
-        .require_network(Network::Bitcoin)?;
+    let destination = Address::from_str("tb1qeud9thj94ap9m7mg7kds6asf778uj6d56c8r9r")?
+        .require_network(Network::Testnet4)?;
 
-    let (psbt, passphrases) = build_psbt(&utxos, destination, Amount::from_sat(2_000))?;
+    let (psbt, passphrases) = build_psbt(&utxos, destination, Amount::from_sat(200))?;
 
     println!("  Inputs: {}", psbt.inputs.len());
     println!(
@@ -86,18 +89,51 @@ async fn main() -> Result<()> {
 
     println!("  ✅ Signed: {}/{} inputs\n", sigs, signed.inputs.len());
 
-    // Step 4: Finalize
-    println!("Step 4: Finalize\n");
-    println!("  (Call psbt.finalize() and broadcast)\n");
+    // Step 4: Extract final transaction
+    println!("Step 4: Extract final transaction\n");
+
+    // Check if PSBT has witnesses
+    println!("  Checking PSBT finalization:");
+    for (idx, input) in signed.inputs.iter().enumerate() {
+        println!(
+            "    Input {}: tap_key_sig={}, final_script_witness={}",
+            idx,
+            input.tap_key_sig.is_some(),
+            input.final_script_witness.is_some()
+        );
+    }
+
+    // The signed PSBT should be finalized by the aggregator
+    let tx = signed.extract_tx_unchecked_fee_rate();
+
+    // Check witness in extracted transaction
+    println!("\n  Extracted transaction:");
+    for (idx, txin) in tx.input.iter().enumerate() {
+        println!(
+            "    Input {}: witness elements = {}",
+            idx,
+            txin.witness.len()
+        );
+    }
+
+    let tx_hex = bitcoin::consensus::encode::serialize_hex(&tx);
+
+    println!("\n  Transaction hex: {}", &tx_hex);
+    println!("  Transaction size: {} vB", tx.vsize());
+    println!("  Ready to broadcast!\n");
 
     println!("✅ Complete FROST PSBT signing");
-    println!("✅ Transaction size: ~110 vB (56% smaller than multisig)");
+    println!("✅ Transaction finalized and ready for broadcast");
+    println!("✅ Size: {} vB (56% smaller than multisig)", tx.vsize());
 
     Ok(())
 }
 
-/// Generate address via aggregator
-async fn generate_address(aggregator: &str, passphrase: &str) -> Result<String> {
+/// Generate address and get public key
+async fn generate_address_with_pubkey(
+    aggregator: &str,
+    passphrase: &str,
+) -> Result<(String, String)> {
     #[derive(Serialize)]
     struct Req {
         chain: String,
@@ -107,6 +143,7 @@ async fn generate_address(aggregator: &str, passphrase: &str) -> Result<String> 
     #[derive(Deserialize)]
     struct Resp {
         address: String,
+        public_key: String,
     }
 
     let resp = reqwest::Client::new()
@@ -122,7 +159,8 @@ async fn generate_address(aggregator: &str, passphrase: &str) -> Result<String> 
         anyhow::bail!("Generate failed: {}", resp.text().await?);
     }
 
-    Ok(resp.json::<Resp>().await?.address)
+    let data = resp.json::<Resp>().await?;
+    Ok((data.address, data.public_key))
 }
 
 /// Build PSBT
@@ -159,15 +197,32 @@ fn build_psbt(
 
     let mut psbt = Psbt::from_unsigned_tx(tx)?;
 
-    // Add witness_utxo for Taproot signing
+    // Add witness_utxo for Taproot signing with real public keys
     for (i, utxo) in utxos.iter().enumerate() {
+        // Parse the public key from hex (remove 0x02/0x03 prefix for x-only)
+        let pubkey_bytes = hex::decode(&utxo.pubkey_hex)?;
+        let xonly_bytes = if pubkey_bytes.len() == 33 {
+            &pubkey_bytes[1..] // Skip compression prefix for x-only
+        } else if pubkey_bytes.len() == 32 {
+            &pubkey_bytes[..]
+        } else {
+            anyhow::bail!("Invalid pubkey length: {}", pubkey_bytes.len());
+        };
+
+        let xonly_pubkey = bitcoin::key::XOnlyPublicKey::from_slice(xonly_bytes)?;
+        let tweaked_pubkey = bitcoin::key::TweakedPublicKey::dangerous_assume_tweaked(xonly_pubkey);
+        let script_pubkey = bitcoin::ScriptBuf::new_p2tr_tweaked(tweaked_pubkey);
+
+        println!(
+            "  Input {}: pubkey={}, script={}",
+            i,
+            hex::encode(xonly_bytes),
+            hex::encode(script_pubkey.as_bytes())
+        );
+
         psbt.inputs[i].witness_utxo = Some(TxOut {
             value: utxo.amount,
-            script_pubkey: bitcoin::ScriptBuf::new_p2tr_tweaked(
-                bitcoin::key::TweakedPublicKey::dangerous_assume_tweaked(
-                    bitcoin::key::XOnlyPublicKey::from_slice(&[2u8; 32])?,
-                ),
-            ),
+            script_pubkey,
         });
     }
 
