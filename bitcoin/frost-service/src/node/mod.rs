@@ -17,18 +17,17 @@ pub async fn run(
     node_config: crate::config::NodeConfig,
 ) -> Result<()> {
     // Load node configuration (network is ignored - signers are chain-agnostic)
-    let frost_config = config::FrostNode::from_node_config(node_config)?;
 
     tracing::info!("✅ DKG state initialized");
     tracing::info!(
         "Starting FROST multi-chain signer node {}",
-        frost_config.node_index
+        node_config.node_index
     );
     tracing::info!("Supported curves: secp256k1, Ed25519");
 
     // Create multi-curve storage
     let multi_storage = Arc::new(multi_storage::MultiCurveStorage::open(
-        &frost_config.storage_path,
+        &node_config.storage_path,
     )?);
     tracing::info!("✅ Multi-curve storage opened");
 
@@ -37,7 +36,7 @@ pub async fn run(
 
     // Create unified API (pubkey queries + DKG + FROST signing all in one)
     let api = dkg_api::UnifiedApi {
-        config: Arc::new(frost_config.clone()),
+        config: Arc::new(node_config.clone()),
         storage: multi_storage,
         dkg_state,
     };
@@ -58,7 +57,7 @@ pub async fn run(
 
     tracing::info!(
         "🚀 FROST signer node {} listening on {}:{}",
-        frost_config.node_index,
+        node_config.node_index,
         server_config.host,
         server_config.port
     );

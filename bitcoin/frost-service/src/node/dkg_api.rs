@@ -12,14 +12,14 @@ use poem_openapi::payload::Json;
 use poem_openapi::{ApiResponse, Object, OpenApi};
 use std::sync::Arc;
 
+use crate::config::NodeConfig;
 use crate::curves::ed25519::Ed25519Operations;
 use crate::curves::secp256k1::Secp256k1Operations;
 use crate::curves::CurveType;
-use crate::node::config::FrostNode;
 use crate::node::multi_storage::{CurveStorage, MultiCurveStorage};
 
 pub struct UnifiedApi {
-    pub config: Arc<FrostNode>,
+    pub config: Arc<NodeConfig>,
     pub storage: Arc<MultiCurveStorage>,
     pub dkg_state: Arc<crate::node::dkg_state::DkgState>,
 }
@@ -232,7 +232,7 @@ impl UnifiedApi {
 
         // Generate round1 package with deterministic RNG
         match crate::node::derivation::dkg_part1(
-            &self.config.master_seed,
+            &self.config.master_seed(),
             &passphrase,
             self.config.node_index,
             self.config.max_signers,
@@ -546,7 +546,7 @@ impl UnifiedApi {
         let encrypted_nonces = match super::crypto::encrypt_nonces(
             &nonces_json,
             &message_bytes,
-            &self.config.master_seed,
+            &self.config.master_seed(),
         ) {
             Ok(enc) => enc,
             Err(e) => {
@@ -585,7 +585,7 @@ impl UnifiedApi {
         let nonces_json = match super::crypto::decrypt_nonces(
             &req.encrypted_nonces,
             &message,
-            &self.config.master_seed,
+            &self.config.master_seed(),
         ) {
             Ok(json) => json,
             Err(e) => {
@@ -804,7 +804,7 @@ impl UnifiedApi {
 
         // Use same deterministic DKG as Taproot but with different seed prefix
         match crate::node::derivation::dkg_part1_ecdsa(
-            &self.config.master_seed,
+            &self.config.master_seed(),
             &passphrase,
             self.config.node_index,
             self.config.max_signers,
@@ -1102,7 +1102,7 @@ impl UnifiedApi {
         use rand_chacha::ChaCha20Rng;
         use sha2::{Digest, Sha256};
 
-        let mut seed_material = self.config.master_seed.clone();
+        let mut seed_material = self.config.master_seed().clone();
         seed_material.extend_from_slice(b"ed25519:");
         seed_material.extend_from_slice(passphrase.as_bytes());
         let seed_hash = Sha256::digest(&seed_material);
@@ -1492,7 +1492,7 @@ impl UnifiedApi {
         let encrypted_nonces = match super::crypto::encrypt_nonces(
             &nonces_json,
             &message_bytes,
-            &self.config.master_seed,
+            &self.config.master_seed(),
         ) {
             Ok(enc) => enc,
             Err(e) => {
@@ -1530,7 +1530,7 @@ impl UnifiedApi {
         let nonces_json = match super::crypto::decrypt_nonces(
             &req.encrypted_nonces,
             &message,
-            &self.config.master_seed,
+            &self.config.master_seed(),
         ) {
             Ok(json) => json,
             Err(e) => {
@@ -1835,7 +1835,7 @@ impl UnifiedApi {
         let encrypted_nonces = match super::crypto::encrypt_nonces(
             &nonces_json,
             &message_bytes,
-            &self.config.master_seed,
+            &self.config.master_seed(),
         ) {
             Ok(enc) => enc,
             Err(e) => {
@@ -1873,7 +1873,7 @@ impl UnifiedApi {
         let nonces_json = match super::crypto::decrypt_nonces(
             &req.encrypted_nonces,
             &message,
-            &self.config.master_seed,
+            &self.config.master_seed(),
         ) {
             Ok(json) => json,
             Err(e) => {

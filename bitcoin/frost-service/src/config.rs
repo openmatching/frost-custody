@@ -39,6 +39,12 @@ pub struct NodeConfig {
     pub min_signers: u16,
 }
 
+impl NodeConfig {
+    pub fn master_seed(&self) -> Vec<u8> {
+        hex::decode(&self.master_seed_hex).expect("Failed to decode master seed")
+    }
+}
+
 fn default_max_signers() -> u16 {
     3
 }
