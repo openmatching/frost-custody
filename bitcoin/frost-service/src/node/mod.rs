@@ -1,6 +1,5 @@
 // FROST signer node - handles DKG and signing rounds
 
-pub mod config;
 pub mod crypto;
 pub mod derivation;
 pub mod dkg_api;
