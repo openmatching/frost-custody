@@ -165,6 +165,7 @@ impl MultiCurveStorage {
     }
 
     /// Check if we have shares for this passphrase and curve
+    #[allow(dead_code)]
     pub fn has_passphrase(&self, curve_type: CurveType, passphrase: &str) -> bool {
         let (cf_keys, _) = self.cf_names(curve_type);
         if let Some(cf) = self.db.cf_handle(cf_keys) {
@@ -228,6 +229,7 @@ impl<C: CurveOperations> CurveStorage<C> {
             .get_pubkey_package::<C>(self.curve_type, passphrase)
     }
 
+    #[allow(dead_code)]
     pub fn has_passphrase(&self, passphrase: &str) -> bool {
         self.storage.has_passphrase(self.curve_type, passphrase)
     }

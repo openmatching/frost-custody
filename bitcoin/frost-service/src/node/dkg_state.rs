@@ -65,6 +65,7 @@ impl DkgState {
         self.round2_secrets.lock().unwrap().get(passphrase).cloned()
     }
 
+    #[allow(dead_code)]
     pub fn remove_round2_secret(
         &self,
         passphrase: &str,

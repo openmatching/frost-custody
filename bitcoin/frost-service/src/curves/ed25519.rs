@@ -1,28 +1,11 @@
+use crate::node::derivation;
+
 /// Ed25519 curve operations for Solana
 use super::CurveOperations;
 use anyhow::{anyhow, Context, Result};
 use frost_ed25519 as frost;
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
-use sha2::{Digest, Sha256};
 
 pub struct Ed25519Operations;
-
-impl Ed25519Operations {
-    pub fn new() -> Self {
-        Self
-    }
-
-    /// Derive deterministic RNG for DKG
-    fn derive_dkg_rng(&self, master_seed: &[u8], passphrase: &str) -> ChaCha20Rng {
-        let mut seed_material = master_seed.to_vec();
-        seed_material.extend_from_slice(b"ed25519:"); // Add curve identifier
-        seed_material.extend_from_slice(passphrase.as_bytes());
-        let seed_hash = Sha256::digest(&seed_material);
-        let seed: [u8; 32] = seed_hash.into();
-        ChaCha20Rng::from_seed(seed)
-    }
-}
 
 impl CurveOperations for Ed25519Operations {
     type KeyPackage = frost::keys::KeyPackage;
@@ -45,7 +28,7 @@ impl CurveOperations for Ed25519Operations {
         max_signers: u16,
         min_signers: u16,
     ) -> Result<(Self::Round1Secret, Self::Round1Package)> {
-        let mut rng = self.derive_dkg_rng(master_seed, passphrase);
+        let mut rng = derivation::derive_dkg_rng(master_seed, passphrase);
 
         let participant_id = frost::Identifier::try_from(node_index + 1)
             .context("Failed to create participant identifier")?;

@@ -57,10 +57,6 @@ fn default_min_signers() -> u16 {
 pub struct AggregatorConfig {
     pub signer_nodes: Vec<String>,
     pub threshold: usize,
-    #[serde(default = "default_max_signers")]
-    pub max_signers: u16,
-    #[serde(default = "default_min_signers")]
-    pub min_signers: u16,
 }
 
 impl AggregatorConfig {
