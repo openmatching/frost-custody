@@ -243,6 +243,48 @@ See [ARCHITECTURE.md](ARCHITECTURE.md#adding-new-chains) for details.
 
 ---
 
+## Examples
+
+### Bitcoin PSBT Signing
+
+```bash
+cargo run --example sign_psbt_frost
+```
+
+Features:
+- Generate Bitcoin Taproot addresses
+- Build PSBT with multiple inputs
+- Sign via FROST signing aggregator
+- 2-of-3 threshold signatures
+
+### Ethereum Transaction Signing
+
+```bash
+cargo run --example sign_eth_frost
+```
+
+Features:
+- Generate Ethereum address (shares Bitcoin's FROST key!)
+- Build EIP-155 transaction
+- Sign with FROST
+- RLP encoding with `rlp` crate
+- Ready for broadcast
+
+### Solana Transaction Signing
+
+```bash
+cargo run --example sign_sol_frost
+```
+
+Features:
+- Generate Solana address (Ed25519 FROST)
+- Build Solana transaction message
+- Sign with Ed25519 FROST
+- **Real signature verification with `ed25519-dalek`**
+- Base58 encoding for broadcast
+
+---
+
 ## Development
 
 ### Build
@@ -263,8 +305,13 @@ cargo test
 
 # Integration test
 make up-frost
-curl -X POST http://localhost:3000/api/address/generate \
+curl -X POST http://localhost:9000/api/address/generate \
   -d '{"chain": "bitcoin", "passphrase": "test"}'
+
+# Run examples
+cargo run --example sign_psbt_frost    # Bitcoin
+cargo run --example sign_eth_frost     # Ethereum
+cargo run --example sign_sol_frost     # Solana
 ```
 
 ### Configuration

@@ -8,17 +8,37 @@ use std::fmt::Debug;
 
 pub mod ed25519;
 pub mod secp256k1;
+pub mod secp256k1_ecdsa;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CurveType {
-    Secp256k1,
-    Ed25519,
+    Secp256k1Taproot, // Schnorr signatures for Bitcoin Taproot
+    Secp256k1Ecdsa,   // ECDSA signatures for Ethereum/EVM
+    Ed25519,          // Ed25519 signatures for Solana
 }
 
 impl CurveType {
     pub fn column_family_prefix(&self) -> &'static str {
         match self {
-            CurveType::Secp256k1 => "secp256k1",
+            CurveType::Secp256k1Taproot => "secp256k1-tr",
+            CurveType::Secp256k1Ecdsa => "secp256k1",
+            CurveType::Ed25519 => "ed25519",
+        }
+    }
+
+    pub fn from_api_name(name: &str) -> Option<Self> {
+        match name {
+            "secp256k1-tr" | "secp256k1_tr" => Some(CurveType::Secp256k1Taproot),
+            "secp256k1" => Some(CurveType::Secp256k1Ecdsa),
+            "ed25519" => Some(CurveType::Ed25519),
+            _ => None,
+        }
+    }
+
+    pub fn api_name(&self) -> &'static str {
+        match self {
+            CurveType::Secp256k1Taproot => "secp256k1-tr",
+            CurveType::Secp256k1Ecdsa => "secp256k1",
             CurveType::Ed25519 => "ed25519",
         }
     }

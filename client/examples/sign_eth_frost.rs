@@ -5,90 +5,120 @@
 //
 // Run with: cargo run --example sign_eth_frost
 
-use anyhow::{Context, Result};
+use anyhow::Result;
+use ethers_core::types::{
+    transaction::eip2718::TypedTransaction, Address, Signature, TransactionRequest, U256,
+};
+use ethers_core::utils::{keccak256, rlp};
 use serde::{Deserialize, Serialize};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     println!("=== FROST Ethereum Transaction Signing Example ===\n");
 
-    let address_aggregator = "http://127.0.0.1:9000"; // DKG orchestration
-    let signing_aggregator = "http://127.0.0.1:8000"; // FROST signing orchestration
+    let address_aggregator = "http://127.0.0.1:9000";
+    let signing_aggregator = "http://127.0.0.1:8000";
 
-    // Step 1: Generate Ethereum address
+    // Step 1: Generate Ethereum address (includes public key!)
     println!("Step 1: Generate FROST Ethereum address\n");
 
     let passphrase = "eth-wallet-001".to_string();
 
-    let eth_address = generate_address(address_aggregator, &passphrase, "ethereum").await?;
-    println!("  Ethereum Address: {}", eth_address);
-    println!("  (Shares same secp256k1 FROST key as Bitcoin!)\n");
+    let (eth_address_str, public_key_hex) =
+        generate_address_with_pubkey(address_aggregator, &passphrase).await?;
+    let eth_address: Address = eth_address_str.parse()?;
 
-    // Step 2: Build Ethereum transaction
+    println!("  Ethereum Address: {}", eth_address);
+    println!("  Public Key: {}...", &public_key_hex[..16]);
+    println!("  Curve: secp256k1 (ECDSA)\n");
+
+    // Step 2: Build Ethereum transaction using ethers
     println!("Step 2: Build Ethereum Transaction\n");
 
-    let tx = EthTransaction {
-        nonce: 42,
-        gas_price: 20_000_000_000u64, // 20 Gwei
-        gas_limit: 21_000u64,
-        to: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb".to_string(),
-        value: 1_000_000_000_000_000_000u128, // 1 ETH
-        data: vec![],
-        chain_id: 1, // Mainnet
-    };
+    let to_hex = "742d35cc6634c0532925a3b844bc9e7595f0bebb";
+    let to_bytes = hex::decode(to_hex)?;
+    let to_address = Address::from_slice(&to_bytes);
+
+    let tx = TransactionRequest::new()
+        .from(eth_address)
+        .to(to_address)
+        .value(U256::from(1_000_000_000_000_000_000u128)) // 1 ETH
+        .gas(21_000u64)
+        .gas_price(20_000_000_000u64) // 20 Gwei
+        .nonce(42u64)
+        .chain_id(1u64); // Mainnet
 
     println!("  From:     {}", eth_address);
-    println!("  To:       {}", tx.to);
-    println!("  Value:    {} ETH", tx.value / 1_000_000_000_000_000_000);
-    println!(
-        "  Gas:      {} @ {} Gwei",
-        tx.gas_limit,
-        tx.gas_price / 1_000_000_000
-    );
-    println!("  Nonce:    {}", tx.nonce);
-    println!("  Chain ID: {} (Mainnet)\n", tx.chain_id);
+    println!("  To:       {}", to_address);
+    println!("  Value:    1 ETH");
+    println!("  Gas:      21000 @ 20 Gwei");
+    println!("  Chain ID: 1 (Mainnet)\n");
 
-    // Step 3: Sign with FROST via signing aggregator
-    println!("Step 3: Sign transaction via FROST signing aggregator\n");
+    // Step 3: Calculate EIP-155 sighash
+    println!("Step 3: Calculate EIP-155 transaction hash\n");
 
-    let tx_hash = calculate_eth_tx_hash(&tx)?;
-    println!("  Transaction hash: 0x{}", hex::encode(&tx_hash));
+    let sighash = calculate_eip155_sighash(&tx)?;
+    println!("  Sighash: 0x{}\n", hex::encode(&sighash));
 
-    let signature =
-        sign_message_via_aggregator(signing_aggregator, &hex::encode(&tx_hash), &passphrase)
+    // Step 4: Sign with FROST ECDSA
+    println!("Step 4: Sign with FROST ECDSA (curve: secp256k1)\n");
+
+    let signature_hex =
+        sign_message_via_aggregator(signing_aggregator, &hex::encode(&sighash), &passphrase)
             .await?;
 
-    println!("  ✅ FROST signature: 0x{}...", &signature[..16]);
-    println!("  ✅ Signature length: {} bytes\n", signature.len() / 2);
+    println!("  ✅ FROST ECDSA signature generated");
+    println!("  ✅ Signature length: {} bytes\n", signature_hex.len() / 2);
 
-    // Step 4: Build signed transaction
-    println!("Step 4: Build signed transaction\n");
+    // Step 5: Build signed transaction
+    println!("Step 5: Build signed Ethereum transaction\n");
 
-    let (r, s, v) = parse_ethereum_signature(&signature, tx.chain_id)?;
-    let signed_tx = encode_signed_tx(&tx, &r, &s, v)?;
+    let sig_bytes = hex::decode(&signature_hex)?;
 
-    println!("  Signed TX (RLP): 0x{}...", &signed_tx[..32]);
+    // Parse ECDSA signature: [r (32), s (32), recovery_id (1)]
+    let r = U256::from_big_endian(&sig_bytes[0..32]);
+    let s = U256::from_big_endian(&sig_bytes[32..64]);
+    let recovery_id = sig_bytes[64] as u64;
+
+    // EIP-155: v = chain_id * 2 + 35 + recovery_id
+    let v = 1 * 2 + 35 + recovery_id;
+
+    let eth_signature = Signature { r, s, v };
+
+    // Build final signed transaction with ethers
+    let typed_tx: TypedTransaction = tx.into();
+    let signed_rlp = typed_tx.rlp_signed(&eth_signature);
+
+    println!(
+        "  Signed TX (RLP): 0x{}...",
+        hex::encode(&signed_rlp)[..32].to_string()
+    );
+    println!("  Transaction size: {} bytes", signed_rlp.len());
     println!("  Ready to broadcast to Ethereum network\n");
 
+    // Step 6: Verify signature (server-side method)
+    println!("Step 6: Server-side signature verification\n");
+    println!("  For production custody, verify signature using:");
+    println!("  • Public key: {}", &public_key_hex[..40]);
+    println!("  • Message hash: 0x{}", hex::encode(&sighash));
+    println!("  • Use secp256k1.verify(hash, signature, pubkey)");
+    println!("  • No ecrecover() needed (you know the signer!)\n");
+
+    println!("═══════════════════════════════════════════════════");
     println!("✅ Complete FROST Ethereum transaction signing");
-    println!("✅ Multi-chain FROST: Same key for Bitcoin + Ethereum!");
+    println!("✅ ECDSA signature verified by FROST aggregator");
+    println!("✅ Transaction ready for broadcast");
+    println!("✅ Real ethers-core types and encoding");
+    println!("═══════════════════════════════════════════════════");
 
     Ok(())
 }
 
-#[derive(Debug, Clone)]
-struct EthTransaction {
-    nonce: u64,
-    gas_price: u64,
-    gas_limit: u64,
-    to: String,
-    value: u128,
-    data: Vec<u8>,
-    chain_id: u64,
-}
-
-/// Generate Ethereum address via aggregator
-async fn generate_address(aggregator: &str, passphrase: &str, chain: &str) -> Result<String> {
+/// Generate Ethereum address and get public key
+async fn generate_address_with_pubkey(
+    aggregator: &str,
+    passphrase: &str,
+) -> Result<(String, String)> {
     #[derive(Serialize)]
     struct Req {
         chain: String,
@@ -98,12 +128,13 @@ async fn generate_address(aggregator: &str, passphrase: &str, chain: &str) -> Re
     #[derive(Deserialize)]
     struct Resp {
         address: String,
+        public_key: String,
     }
 
     let resp = reqwest::Client::new()
         .post(format!("{}/api/address/generate", aggregator))
         .json(&Req {
-            chain: chain.to_string(),
+            chain: "ethereum".to_string(),
             passphrase: passphrase.to_string(),
         })
         .send()
@@ -113,10 +144,11 @@ async fn generate_address(aggregator: &str, passphrase: &str, chain: &str) -> Re
         anyhow::bail!("Generate failed: {}", resp.text().await?);
     }
 
-    Ok(resp.json::<Resp>().await?.address)
+    let data = resp.json::<Resp>().await?;
+    Ok((data.address, data.public_key))
 }
 
-/// Sign message via signing aggregator
+/// Sign message via signing aggregator (ECDSA)
 async fn sign_message_via_aggregator(
     aggregator_url: &str,
     message_hex: &str,
@@ -126,6 +158,7 @@ async fn sign_message_via_aggregator(
     struct Req {
         passphrase: String,
         message: String,
+        curve: String,
     }
 
     #[derive(Deserialize)]
@@ -141,6 +174,7 @@ async fn sign_message_via_aggregator(
         .json(&Req {
             passphrase: passphrase.to_string(),
             message: message_hex.to_string(),
+            curve: "secp256k1".to_string(), // ECDSA for Ethereum
         })
         .send()
         .await?;
@@ -152,77 +186,37 @@ async fn sign_message_via_aggregator(
     let result = resp.json::<Resp>().await?;
 
     if !result.verified {
-        anyhow::bail!("Signature verification failed");
+        anyhow::bail!("Signature verification failed by aggregator");
     }
 
     Ok(result.signature)
 }
 
-/// Calculate Ethereum transaction hash (for EIP-155 signing)
-fn calculate_eth_tx_hash(tx: &EthTransaction) -> Result<Vec<u8>> {
-    use sha3::{Digest, Keccak256};
+/// Calculate EIP-155 sighash using ethers-core
+fn calculate_eip155_sighash(tx: &TransactionRequest) -> Result<[u8; 32]> {
+    // Build EIP-155 signing hash: Keccak256(RLP([nonce, gasPrice, gasLimit, to, value, data, chainId, 0, 0]))
+    let mut stream = rlp::RlpStream::new();
+    stream.begin_list(9);
 
-    // Simplified RLP encoding for EIP-155
-    // In production, use proper RLP library
-    let mut _rlp: Vec<u8> = Vec::new();
+    stream.append(&tx.nonce.unwrap_or(U256::zero()));
+    stream.append(&tx.gas_price.unwrap_or(U256::zero()));
+    stream.append(&tx.gas.unwrap_or(U256::zero()));
 
-    // This is a simplified version - production should use `rlp` crate
-    // For demo purposes, we'll create the signing hash directly
-    let mut hasher = Keccak256::new();
-
-    // EIP-155: hash(nonce, gasPrice, gasLimit, to, value, data, chainId, 0, 0)
-    hasher.update(&tx.nonce.to_be_bytes());
-    hasher.update(&tx.gas_price.to_be_bytes());
-    hasher.update(&tx.gas_limit.to_be_bytes());
-    hasher.update(tx.to.as_bytes());
-    hasher.update(&tx.value.to_be_bytes());
-    hasher.update(&tx.data);
-    hasher.update(&tx.chain_id.to_be_bytes());
-
-    Ok(hasher.finalize().to_vec())
-}
-
-/// Parse Schnorr signature into Ethereum (r, s, v) format
-fn parse_ethereum_signature(sig_hex: &str, chain_id: u64) -> Result<(Vec<u8>, Vec<u8>, u8)> {
-    let sig_bytes = hex::decode(sig_hex)?;
-
-    if sig_bytes.len() != 64 {
-        anyhow::bail!(
-            "Invalid Schnorr signature length: expected 64 bytes, got {}",
-            sig_bytes.len()
-        );
+    if let Some(to) = tx.to.as_ref() {
+        stream.append(to);
+    } else {
+        stream.append(&"");
     }
 
-    // For Schnorr, we need to convert to ECDSA format
-    // In production, use proper signature conversion
-    let r = sig_bytes[0..32].to_vec();
-    let s = sig_bytes[32..64].to_vec();
+    stream.append(&tx.value.unwrap_or(U256::zero()));
+    stream.append(&tx.data.as_ref().map(|d| d.as_ref()).unwrap_or(&[]));
 
-    // EIP-155: v = chain_id * 2 + 35 + recovery_id
-    // For Schnorr, recovery_id is typically 0 or 1
-    let recovery_id = 0u8; // Simplified - should be calculated properly
-    let v = (chain_id * 2 + 35 + recovery_id as u64) as u8;
+    // EIP-155: append chain_id, 0, 0
+    let chain_id_u64 = tx.chain_id.map(|id| id.as_u64()).unwrap_or(1u64);
+    stream.append(&chain_id_u64);
+    stream.append(&0u8);
+    stream.append(&0u8);
 
-    Ok((r, s, v))
-}
-
-/// Encode signed Ethereum transaction (RLP)
-fn encode_signed_tx(tx: &EthTransaction, r: &[u8], s: &[u8], v: u8) -> Result<String> {
-    // Simplified encoding - production should use `rlp` crate
-    let mut encoded = Vec::new();
-
-    // Add transaction fields
-    encoded.extend_from_slice(&tx.nonce.to_be_bytes());
-    encoded.extend_from_slice(&tx.gas_price.to_be_bytes());
-    encoded.extend_from_slice(&tx.gas_limit.to_be_bytes());
-    encoded.extend_from_slice(tx.to.as_bytes());
-    encoded.extend_from_slice(&tx.value.to_be_bytes());
-    encoded.extend_from_slice(&tx.data);
-
-    // Add signature
-    encoded.push(v);
-    encoded.extend_from_slice(r);
-    encoded.extend_from_slice(s);
-
-    Ok(hex::encode(encoded))
+    let encoded = stream.out();
+    Ok(keccak256(encoded))
 }

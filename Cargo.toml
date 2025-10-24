@@ -25,7 +25,8 @@ bip39 = "2.0"
 base64 = "0.22"
 
 # FROST
-frost-secp256k1-tr = "2.0.0"
+frost-secp256k1-tr = "2.0.0" # Schnorr/Taproot for Bitcoin
+frost-secp256k1 = "2.0.0"    # ECDSA for Ethereum/EVM
 rand = "0.8"
 
 # Ethereum

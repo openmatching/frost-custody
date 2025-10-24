@@ -90,10 +90,11 @@ impl SigningAggregatorApi {
         tracing::info!("Signing message with FROST (curve: {})", req.curve);
 
         // Determine FROST endpoint based on curve
-        let curve_suffix = if req.curve == "ed25519" {
-            "ed25519"
-        } else {
-            "" // secp256k1 is default (no suffix)
+        let curve_suffix = match req.curve.as_str() {
+            "ed25519" => "ed25519",
+            "secp256k1" => "secp256k1",       // ECDSA for Ethereum
+            "secp256k1-tr" => "secp256k1-tr", // Taproot for Bitcoin
+            _ => "secp256k1-tr",              // Default to Taproot for backward compat
         };
 
         // Orchestrate FROST signing with curve-specific endpoints
@@ -187,12 +188,13 @@ impl SigningAggregatorApi {
 
             let sighash_hex = hex::encode(sighash.as_byte_array());
 
-            // Sign with FROST
-            let (signature_hex, _) = match crate::common::frost_client::sign_message(
+            // Sign with FROST (Bitcoin uses Taproot/Schnorr)
+            let (signature_hex, _) = match sign_message_for_curve(
                 passphrase,
                 &sighash_hex,
                 &self.config.signer_nodes,
                 self.config.threshold,
+                "secp256k1-tr", // Bitcoin Taproot
             )
             .await
             {
@@ -318,11 +320,8 @@ async fn sign_message_for_curve(
     let client = reqwest::Client::new();
 
     // Build endpoint URLs based on curve
-    let frost_prefix = if curve_suffix.is_empty() {
-        "frost".to_string()
-    } else {
-        format!("frost/{}", curve_suffix)
-    };
+    // Format: /api/frost/{curve}/round1
+    let frost_prefix = format!("frost/{}", curve_suffix);
 
     tracing::debug!(
         "Starting FROST signing with {} nodes (threshold: {}, curve: {})",

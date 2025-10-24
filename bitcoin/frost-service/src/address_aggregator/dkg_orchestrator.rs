@@ -50,14 +50,24 @@ struct DkgFinalizeResponse {
     pubkey_hex: String, // Raw public key from signer (not address)
 }
 
-/// Orchestrate secp256k1 DKG across all signer nodes
-pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result<String> {
-    orchestrate_dkg_for_curve(signer_urls, passphrase, "").await
+/// Orchestrate secp256k1-tr (Taproot/Schnorr) DKG for Bitcoin
+pub async fn orchestrate_dkg_taproot(signer_urls: &[String], passphrase: &str) -> Result<String> {
+    orchestrate_dkg_for_curve(signer_urls, passphrase, "secp256k1-tr").await
 }
 
-/// Orchestrate Ed25519 DKG across all signer nodes (for Solana)
+/// Orchestrate secp256k1 (ECDSA) DKG for Ethereum/EVM
+pub async fn orchestrate_dkg_ecdsa(signer_urls: &[String], passphrase: &str) -> Result<String> {
+    orchestrate_dkg_for_curve(signer_urls, passphrase, "secp256k1").await
+}
+
+/// Orchestrate Ed25519 DKG for Solana
 pub async fn orchestrate_dkg_ed25519(signer_urls: &[String], passphrase: &str) -> Result<String> {
     orchestrate_dkg_for_curve(signer_urls, passphrase, "ed25519").await
+}
+
+// Legacy alias (keep for backward compatibility)
+pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result<String> {
+    orchestrate_dkg_taproot(signer_urls, passphrase).await
 }
 
 /// Generic DKG orchestrator supporting both secp256k1 and Ed25519
@@ -69,24 +79,28 @@ async fn orchestrate_dkg_for_curve(
     let client = reqwest::Client::new();
 
     // Build endpoint URLs based on curve
-    let round1_endpoint = if curve_suffix.is_empty() {
-        "round1".to_string()
-    } else {
-        format!("{}/round1", curve_suffix)
-    };
-    let round2_endpoint = if curve_suffix.is_empty() {
-        "round2".to_string()
-    } else {
-        format!("{}/round2", curve_suffix)
-    };
-    let finalize_endpoint = if curve_suffix.is_empty() {
-        "finalize".to_string()
-    } else {
-        format!("{}/finalize", curve_suffix)
+    // Format: /api/dkg/{curve}/round1 or /api/dkg/round1 for default
+    let (round1_endpoint, round2_endpoint, finalize_endpoint) = match curve_suffix {
+        "" | "secp256k1-tr" => {
+            // Taproot is the default (backward compatible)
+            (
+                "secp256k1-tr/round1".to_string(),
+                "secp256k1-tr/round2".to_string(),
+                "secp256k1-tr/finalize".to_string(),
+            )
+        }
+        other => {
+            // Other curves: secp256k1, ed25519, etc.
+            (
+                format!("{}/round1", other),
+                format!("{}/round2", other),
+                format!("{}/finalize", other),
+            )
+        }
     };
 
     let curve_name = if curve_suffix.is_empty() {
-        "secp256k1"
+        "secp256k1-tr"
     } else {
         curve_suffix
     };

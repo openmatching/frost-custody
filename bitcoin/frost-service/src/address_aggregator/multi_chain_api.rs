@@ -35,6 +35,7 @@ pub struct AddressResponse {
     pub chain: String,
     pub passphrase: String,
     pub address: String,
+    pub public_key: String, // hex-encoded public key
     pub curve: String,
 }
 
@@ -82,8 +83,10 @@ impl MultiChainAggregatorApi {
         };
 
         // Determine curve and DKG endpoint
+        // Bitcoin uses Taproot (Schnorr), Ethereum uses ECDSA, Solana uses Ed25519
         let (curve_name, curve_endpoint) = match chain {
-            Chain::Bitcoin | Chain::Ethereum => ("secp256k1", "secp256k1"),
+            Chain::Bitcoin => ("secp256k1-tr", "secp256k1-tr"), // Taproot/Schnorr
+            Chain::Ethereum => ("secp256k1", "secp256k1"),      // ECDSA
             Chain::Solana => ("ed25519", "ed25519"),
         };
 
@@ -119,11 +122,19 @@ impl MultiChainAggregatorApi {
                     curve_name
                 );
 
-                // Choose the right orchestrator based on curve
+                // Choose the right orchestrator based on chain/curve
                 let dkg_result = match chain {
-                    Chain::Bitcoin | Chain::Ethereum => {
-                        // secp256k1 DKG
-                        super::dkg_orchestrator::orchestrate_dkg(
+                    Chain::Bitcoin => {
+                        // secp256k1-tr (Taproot/Schnorr) DKG
+                        super::dkg_orchestrator::orchestrate_dkg_taproot(
+                            &self.config.signer_urls(),
+                            &req.passphrase,
+                        )
+                        .await
+                    }
+                    Chain::Ethereum => {
+                        // secp256k1 (ECDSA) DKG
+                        super::dkg_orchestrator::orchestrate_dkg_ecdsa(
                             &self.config.signer_urls(),
                             &req.passphrase,
                         )
@@ -195,6 +206,7 @@ impl MultiChainAggregatorApi {
             chain: chain.as_str().to_string(),
             passphrase: req.passphrase,
             address,
+            public_key: pubkey_hex, // hex-encoded public key for client-side verification
             curve: curve_name.to_string(),
         }))
     }

@@ -12,7 +12,9 @@ use std::sync::Arc;
 use crate::curves::{CurveOperations, CurveType};
 
 /// Column family names
-const CF_SECP256K1_KEYS: &str = "secp256k1_keys";
+const CF_SECP256K1_TR_KEYS: &str = "secp256k1_tr_keys"; // Taproot/Schnorr
+const CF_SECP256K1_TR_PUBKEYS: &str = "secp256k1_tr_pubkeys";
+const CF_SECP256K1_KEYS: &str = "secp256k1_keys"; // ECDSA
 const CF_SECP256K1_PUBKEYS: &str = "secp256k1_pubkeys";
 const CF_ED25519_KEYS: &str = "ed25519_keys";
 const CF_ED25519_PUBKEYS: &str = "ed25519_pubkeys";
@@ -31,6 +33,8 @@ impl MultiCurveStorage {
 
         // Define column families
         let cfs = vec![
+            ColumnFamilyDescriptor::new(CF_SECP256K1_TR_KEYS, Options::default()),
+            ColumnFamilyDescriptor::new(CF_SECP256K1_TR_PUBKEYS, Options::default()),
             ColumnFamilyDescriptor::new(CF_SECP256K1_KEYS, Options::default()),
             ColumnFamilyDescriptor::new(CF_SECP256K1_PUBKEYS, Options::default()),
             ColumnFamilyDescriptor::new(CF_ED25519_KEYS, Options::default()),
@@ -46,7 +50,8 @@ impl MultiCurveStorage {
     /// Get column family names for curve type
     fn cf_names(&self, curve_type: CurveType) -> (&'static str, &'static str) {
         match curve_type {
-            CurveType::Secp256k1 => (CF_SECP256K1_KEYS, CF_SECP256K1_PUBKEYS),
+            CurveType::Secp256k1Taproot => (CF_SECP256K1_TR_KEYS, CF_SECP256K1_TR_PUBKEYS),
+            CurveType::Secp256k1Ecdsa => (CF_SECP256K1_KEYS, CF_SECP256K1_PUBKEYS),
             CurveType::Ed25519 => (CF_ED25519_KEYS, CF_ED25519_PUBKEYS),
         }
     }
