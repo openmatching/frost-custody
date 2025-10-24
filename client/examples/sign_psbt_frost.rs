@@ -92,34 +92,13 @@ async fn main() -> Result<()> {
     // Step 4: Extract final transaction
     println!("Step 4: Extract final transaction\n");
 
-    // Check if PSBT has witnesses
-    println!("  Checking PSBT finalization:");
-    for (idx, input) in signed.inputs.iter().enumerate() {
-        println!(
-            "    Input {}: tap_key_sig={}, final_script_witness={}",
-            idx,
-            input.tap_key_sig.is_some(),
-            input.final_script_witness.is_some()
-        );
-    }
-
-    // The signed PSBT should be finalized by the aggregator
+    // Extract transaction from finalized PSBT
     let tx = signed.extract_tx_unchecked_fee_rate();
-
-    // Check witness in extracted transaction
-    println!("\n  Extracted transaction:");
-    for (idx, txin) in tx.input.iter().enumerate() {
-        println!(
-            "    Input {}: witness elements = {}",
-            idx,
-            txin.witness.len()
-        );
-    }
-
     let tx_hex = bitcoin::consensus::encode::serialize_hex(&tx);
 
-    println!("\n  Transaction hex: {}", &tx_hex);
+    println!("  Transaction hex: {}", tx_hex);
     println!("  Transaction size: {} vB", tx.vsize());
+    println!("  Inputs: {}, Outputs: {}", tx.input.len(), tx.output.len());
     println!("  Ready to broadcast!\n");
 
     println!("✅ Complete FROST PSBT signing");
@@ -212,13 +191,6 @@ fn build_psbt(
         let xonly_pubkey = bitcoin::key::XOnlyPublicKey::from_slice(xonly_bytes)?;
         let tweaked_pubkey = bitcoin::key::TweakedPublicKey::dangerous_assume_tweaked(xonly_pubkey);
         let script_pubkey = bitcoin::ScriptBuf::new_p2tr_tweaked(tweaked_pubkey);
-
-        println!(
-            "  Input {}: pubkey={}, script={}",
-            i,
-            hex::encode(xonly_bytes),
-            hex::encode(script_pubkey.as_bytes())
-        );
 
         psbt.inputs[i].witness_utxo = Some(TxOut {
             value: utxo.amount,
