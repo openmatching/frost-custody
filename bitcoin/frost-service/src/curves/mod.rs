@@ -16,16 +16,6 @@ pub enum CurveType {
     Ed25519,          // Ed25519 signatures for Solana
 }
 
-impl CurveType {
-    pub fn column_family_prefix(&self) -> &'static str {
-        match self {
-            CurveType::Secp256k1Taproot => "secp256k1-tr",
-            CurveType::Secp256k1Ecdsa => "secp256k1",
-            CurveType::Ed25519 => "ed25519",
-        }
-    }
-}
-
 /// Minimal trait for curve type information
 /// Only defines associated types needed for storage - no methods!
 pub trait CurveOperations: Send + Sync {
