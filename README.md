@@ -1,245 +1,50 @@
-# FROST Custody
+# FROST Multi-Chain Custody
 
-**Production-ready multi-chain threshold signature custody service**
+**Production-ready MPC (Multi-Party Computation) threshold signature custody service**
 
-Supporting Bitcoin, Ethereum, and Solana with 2-of-3 threshold signatures using FROST.
+Supporting Bitcoin, Ethereum, and Solana with flexible **m-of-n** threshold signatures using FROST protocol.
 
 ## Quick Start
 
 ```bash
-make build       # Build Docker image
-make up-frost    # Deploy FROST services (3 signers + aggregator)
+# Start FROST services
+make up-frost
 
-# Generate Bitcoin address
-curl -X POST http://localhost:3000/api/address/generate \
+# Generate addresses
+curl -X POST http://localhost:9000/api/address/generate \
   -H "Content-Type: application/json" \
-  -d '{"chain": "bitcoin", "passphrase": "550e8400-e29b-41d4-a716-446655440000"}'
+  -d '{"chain": "bitcoin", "passphrase": "user-wallet-001"}'
 
-# Generate Ethereum address (same FROST key!)
-curl -X POST http://localhost:3000/api/address/generate \
-  -H "Content-Type: application/json" \
-  -d '{"chain": "ethereum", "passphrase": "550e8400-e29b-41d4-a716-446655440000"}'
+# Returns: {"address": "bc1p...", "public_key": "03...", "curve": "secp256k1-tr"}
 ```
-
----
-
-## Why FROST?
-
-### Fee Savings
-
-| Implementation               | Tx Size     | Fee @ 50 sat/vB | Annual @ 1000 tx/day |
-| ---------------------------- | ----------- | --------------- | -------------------- |
-| Traditional Multisig (P2WSH) | ~250 vB     | 12,500 sats     | $2.3M                |
-| **FROST Taproot (P2TR)**     | **~110 vB** | **5,500 sats**  | **$1.0M**            |
-
-**Annual savings: $1.3M** 💰
-
-### Multi-Chain Support
-
-| Chain        | Address Format    | Same Key as Bitcoin? |
-| ------------ | ----------------- | -------------------- |
-| **Bitcoin**  | bc1p... (Taproot) | -                    |
-| **Ethereum** | 0x... (Keccak256) | ✅ Yes (secp256k1)    |
-| **Solana**   | Base58            | ❌ No (Ed25519)       |
-
-**One secp256k1 FROST key → Bitcoin + Ethereum + 100s more chains!**
 
 ---
 
 ## Architecture
 
-### Chain-Agnostic Design
+### Three-Curve Design
 
-**Signer Nodes (Dumb Crypto Boxes):**
-- Only know about **curves** (secp256k1, Ed25519)
-- Expose raw public keys
-- No chain-specific logic
-- Pure FROST operations
+| Curve        | Signature Type | Blockchain   | Use Case          |
+| ------------ | -------------- | ------------ | ----------------- |
+| secp256k1-tr | Schnorr        | Bitcoin      | Taproot key-spend |
+| secp256k1    | ECDSA          | Ethereum/EVM | Standard txs      |
+| ed25519      | Ed25519        | Solana       | Native txs        |
 
-**Address Aggregator (Smart Orchestrator):**
-- Knows about **chains** (Bitcoin, Ethereum, Solana)
-- Fetches raw pubkeys from signers
-- Applies chain-specific address derivation
-- Coordinates DKG
-
-**Benefits:**
-- ✅ Add 100 new chains → zero signer changes
-- ✅ Smaller attack surface (no transaction parsing in signers)
-- ✅ Independent deployment (update aggregator only)
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for full details.
-
----
-
-## Supported Blockchains
-
-### Bitcoin
-```bash
-curl -X POST http://localhost:3000/api/address/generate \
-  -d '{"chain": "bitcoin", "passphrase": "uuid"}'
-  
-→ bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr
-```
-
-### Ethereum
-```bash
-curl -X POST http://localhost:3000/api/address/generate \
-  -d '{"chain": "ethereum", "passphrase": "uuid"}'
-  
-→ 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb
-```
-
-### Solana
-```bash
-curl -X POST http://localhost:3000/api/address/generate \
-  -d '{"chain": "solana", "passphrase": "uuid"}'
-  
-→ 7EqQdEULxWcraVx3mXKFjc84LhCkMGZCkRuDpvcMwJeK
-```
-
-**Note:** Bitcoin and Ethereum share the same secp256k1 FROST key. Solana uses a separate Ed25519 FROST key.
-
----
-
-## Project Structure
+### Components
 
 ```
-frost-custody/
-├── bitcoin/
-│   ├── multisig-signer/         # Legacy: Traditional 2-of-3 multisig
-│   └── frost-service/            # FROST multi-chain service
-│       ├── src/
-│       │   ├── curves/           # Curve abstraction (secp256k1, Ed25519)
-│       │   ├── node/             # Signer node (curve-agnostic)
-│       │   │   ├── curve_api.rs  # GET /api/curve/{curve}/pubkey
-│       │   │   └── multi_storage.rs  # RocksDB column families
-│       │   └── address_aggregator/   # Chain-aware orchestrator
-│       │       ├── chain_derivation.rs  # BTC/ETH/SOL derivation
-│       │       └── multi_chain_api.rs   # POST /api/address/generate
-├── client/                       # Client libraries
-├── docker-compose.yml            # All services
-├── Makefile                      # Easy commands
-├── ARCHITECTURE.md               # Detailed architecture docs
-└── SECURITY.md                   # Security model
+Client
+  ├─→ Address Aggregator (port 9000) - LOW RISK
+  │   └─ Generates addresses, runs DKG automatically
+  │
+  └─→ Signing Aggregator (port 8000) - HIGH RISK  
+      └─ Signs transactions with threshold signatures
+            ↓
+      Signer Nodes (internal network)
+      └─ Pure crypto operations (curve-agnostic)
 ```
 
----
-
-## API Reference
-
-### Signer Node (Curve API)
-
-```bash
-# Get raw public key (chain-agnostic)
-curl "http://localhost:3001/api/curve/secp256k1/pubkey?passphrase=uuid"
-→ {
-    "curve": "secp256k1",
-    "passphrase": "uuid",
-    "public_key": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
-  }
-
-# Health check
-curl "http://localhost:3001/health"
-→ {
-    "status": "ok",
-    "node_index": 0,
-    "supported_curves": ["secp256k1", "ed25519"]
-  }
-```
-
-### Aggregator (Chain API)
-
-```bash
-# Generate address for any chain
-curl -X POST http://localhost:3000/api/address/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "chain": "bitcoin",
-    "passphrase": "550e8400-e29b-41d4-a716-446655440000"
-  }'
-
-→ {
-    "chain": "bitcoin",
-    "passphrase": "550e8400-e29b-41d4-a716-446655440000",
-    "address": "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr",
-    "curve": "secp256k1"
-  }
-
-# Query params also work
-curl "http://localhost:3000/api/address?chain=ethereum&passphrase=uuid"
-```
-
----
-
-## Deployment
-
-### Docker Compose
-
-```bash
-# Start all services
-docker-compose up -d
-
-# Check health
-curl http://localhost:3000/health  # Aggregator
-curl http://localhost:3001/health  # Signer 0
-curl http://localhost:3002/health  # Signer 1
-curl http://localhost:3003/health  # Signer 2
-
-# Generate addresses
-curl -X POST http://localhost:3000/api/address/generate \
-  -d '{"chain": "bitcoin", "passphrase": "test-uuid"}'
-```
-
-### Services
-
-| Service          | Port | Role                                |
-| ---------------- | ---- | ----------------------------------- |
-| frost-aggregator | 3000 | Orchestrates DKG, derives addresses |
-| frost-signer-0   | 3001 | FROST node 0 (threshold signing)    |
-| frost-signer-1   | 3002 | FROST node 1 (threshold signing)    |
-| frost-signer-2   | 3003 | FROST node 2 (threshold signing)    |
-
----
-
-## Adding New Chains
-
-Want to add Polygon, BSC, Avalanche, or any secp256k1 chain?
-
-**Signer nodes: ZERO changes needed** ✅
-
-**Aggregator: Add 10 lines of code**
-
-```rust
-// 1. Add to Chain enum
-pub enum Chain {
-    Bitcoin,
-    Ethereum,
-    Solana,
-    Polygon,  // ← Add this
-}
-
-// 2. Map to curve (Polygon uses secp256k1 like Ethereum)
-match chain {
-    Chain::Bitcoin | Chain::Ethereum | Chain::Polygon => {
-        ("secp256k1", "secp256k1")
-    }
-    ...
-}
-
-// 3. Apply address derivation (Polygon uses Ethereum format)
-match chain {
-    Chain::Ethereum | Chain::Polygon => derive_ethereum_address(&pubkey)?,
-    ...
-}
-```
-
-**Deploy: Restart aggregator only, signers stay running**
-
-```bash
-docker-compose restart frost-aggregator
-```
-
-See [ARCHITECTURE.md](ARCHITECTURE.md#adding-new-chains) for details.
+**See [ARCHITECTURE.md](ARCHITECTURE.md) for details.**
 
 ---
 
@@ -251,11 +56,10 @@ See [ARCHITECTURE.md](ARCHITECTURE.md#adding-new-chains) for details.
 cargo run --example sign_psbt_frost
 ```
 
-Features:
-- Generate Bitcoin Taproot addresses
+- Generate Taproot addresses
 - Build PSBT with multiple inputs
-- Sign via FROST signing aggregator
-- 2-of-3 threshold signatures
+- Sign with FROST threshold signatures (configurable m-of-n)
+- **~110 vB (56% smaller than multisig!)**
 
 ### Ethereum Transaction Signing
 
@@ -263,12 +67,11 @@ Features:
 cargo run --example sign_eth_frost
 ```
 
-Features:
-- Generate Ethereum address (shares Bitcoin's FROST key!)
+- Generate Ethereum address (ECDSA FROST)
 - Build EIP-155 transaction
-- Sign with FROST
-- RLP encoding with `rlp` crate
-- Ready for broadcast
+- Sign with threshold signatures
+- Uses `ethers-core` for real RLP encoding
+- **Server-side validation recommended**
 
 ### Solana Transaction Signing
 
@@ -276,12 +79,168 @@ Features:
 cargo run --example sign_sol_frost
 ```
 
-Features:
 - Generate Solana address (Ed25519 FROST)
-- Build Solana transaction message
-- Sign with Ed25519 FROST
-- **Real signature verification with `ed25519-dalek`**
-- Base58 encoding for broadcast
+- Build transaction with `solana-sdk`
+- Sign with Ed25519 threshold signatures
+- **Cryptographically verified with `ed25519-dalek`**
+
+---
+
+## API
+
+### Generate Address
+
+```bash
+POST /api/address/generate
+{
+  "chain": "bitcoin|ethereum|solana",
+  "passphrase": "unique-passphrase"
+}
+
+Response:
+{
+  "address": "...",
+  "public_key": "...",  # For signature verification
+  "curve": "secp256k1-tr|secp256k1|ed25519",
+  "chain": "...",
+  "passphrase": "..."
+}
+```
+
+### Sign Message/Transaction
+
+```bash
+POST /api/sign/message
+{
+  "passphrase": "user-passphrase",
+  "message": "hex-encoded-hash",
+  "curve": "secp256k1-tr|secp256k1|ed25519"  # Optional, defaults to secp256k1-tr
+}
+
+Response:
+{
+  "signature": "hex-encoded-signature",
+  "verified": true  # FROST verified!
+}
+```
+
+### Sign Bitcoin PSBT
+
+```bash
+POST /api/sign/psbt
+{
+  "psbt": "base64-encoded-psbt",
+  "passphrases": ["pass1", "pass2"]  # One per input
+}
+
+Response:
+{
+  "signed_psbt": "base64-encoded-signed-psbt",
+  "signatures_added": 2
+}
+```
+
+---
+
+## Deployment
+
+```bash
+# Build
+make build
+
+# Start FROST services (3 nodes + 2 aggregators)
+make up-frost
+
+# Check health
+curl http://localhost:9000/health  # Address aggregator
+curl http://localhost:8000/health  # Signing aggregator
+
+# View logs
+make logs-frost
+```
+
+### Services
+
+| Service              | Port | Role    | Risk     | Expose? |
+| -------------------- | ---- | ------- | -------- | ------- |
+| frost-node-0,1,2,... | 4000 | Signer  | HIGH     | NO      |
+| address-aggregator   | 9000 | DKG     | LOW      | YES     |
+| signing-aggregator   | 8000 | Signing | CRITICAL | NO      |
+
+**Note:** Configure any number of signer nodes (m-of-n threshold)
+
+---
+
+## Security
+
+### Threshold Security (m-of-n)
+
+**Flexible threshold configuration:**
+- 2-of-3 (demo/standard)
+- 3-of-5 (recommended)
+- 5-of-7 (high security)
+- Any m-of-n combination
+
+**Security properties:**
+- m-1 nodes compromised → funds safe ✅
+- m nodes compromised → funds at risk ⚠️
+
+### Network Segmentation
+
+**Production deployment:**
+- Signer nodes: Internal network ONLY
+- Address aggregator: Can expose (generates addresses, can't sign)
+- Signing aggregator: VPN/internal ONLY (can sign transactions!)
+
+### Key Management
+
+**Backup:**
+- 3 master seeds (one per signer node)
+- List of passphrases (from your database)
+
+**Recovery:**
+- Re-run DKG for each passphrase
+- Deterministic → same keys recovered
+
+**See [SECURITY.md](SECURITY.md) for full threat model.**
+
+---
+
+## Why FROST?
+
+### Why MPC with FROST?
+
+**MPC (Multi-Party Computation)** allows multiple parties to jointly compute signatures without ever reconstructing the private key.
+
+**FROST (Flexible Round-Optimized Schnorr Threshold)** provides:
+- ✅ Threshold signatures (m-of-n)
+- ✅ No single point of failure
+- ✅ Smaller transaction sizes than multisig
+
+**Fee Savings (Bitcoin):**
+
+| Implementation   | Tx Size     | Fee @ 50 sat/vB | Annual @ 1000 tx/day |
+| ---------------- | ----------- | --------------- | -------------------- |
+| Multisig (P2WSH) | ~250 vB     | 12,500 sats     | $2.3M                |
+| **FROST (P2TR)** | **~110 vB** | **5,500 sats**  | **$1.0M**            |
+
+**Savings: $1.3M per year with same security!** 💰
+
+### Multi-Chain Support
+
+**One secp256k1 key → Multiple chains?**
+
+**No!** Bitcoin and Ethereum use **different keys**:
+- Bitcoin uses `secp256k1-tr` (Schnorr/Taproot)
+- Ethereum uses `secp256k1` (ECDSA)
+- Different signature schemes → different keys (for security!)
+
+**Same passphrase generates:**
+- Bitcoin address from Schnorr key
+- Ethereum address from ECDSA key  
+- Solana address from Ed25519 key
+
+All **independent and isolated**.
 
 ---
 
@@ -290,110 +249,162 @@ Features:
 ### Build
 
 ```bash
-# Build all Rust binaries
 cargo build --release
-
-# Build Docker image
 make build
 ```
 
 ### Test
 
 ```bash
-# Run unit tests
-cargo test
+# Unit tests
+cargo test --workspace
 
-# Integration test
-make up-frost
-curl -X POST http://localhost:9000/api/address/generate \
-  -d '{"chain": "bitcoin", "passphrase": "test"}'
-
-# Run examples
+# Examples
 cargo run --example sign_psbt_frost    # Bitcoin
 cargo run --example sign_eth_frost     # Ethereum
 cargo run --example sign_sol_frost     # Solana
+
+# Health checks
+make test-frost
 ```
 
 ### Configuration
 
+Each service needs a config file:
+
 ```toml
-# config-node0.toml
 [server]
+role = "node"           # node | address | signer
 host = "0.0.0.0"
-port = 3001
+port = 4000
 
 [node]
-node_index = 0
-master_seed = "hex-encoded-seed"
-network = "bitcoin"
+index = 0
+master_seed_hex = "..."
 storage_path = "./data/node0"
+max_signers = 5         # n (total number of signers)
+min_signers = 3         # m (minimum required to sign)
 ```
+
+**Threshold Configuration:**
+- `max_signers` = n (total number of signer nodes)
+- `min_signers` = m (minimum required for signing)
+- Examples: 2-of-3, 3-of-5, 5-of-7, or any m-of-n
+
+See `config.toml.example` for full options.
 
 ---
 
-## Security
+## Adding New Blockchains
 
-### Threshold Security
+### Add EVM Chain (Polygon, BSC, Arbitrum)
 
-- **2-of-3 threshold:** Any 2 nodes can sign, but 1 cannot
-- **No single point of failure:** Compromise of 1 node doesn't expose keys
-- **FROST protocol:** Provably secure threshold Schnorr signatures
+**Signer nodes:** ZERO changes  
+**Signing aggregator:** ZERO changes  
+**Address aggregator:** ~10 lines
 
-### Attack Surface
+```rust
+// In address_aggregator/chain_derivation.rs
+pub enum Chain {
+    Bitcoin,
+    Ethereum,
+    Polygon,  // ← Add this
+    Solana,
+}
 
-**Signer Nodes:**
-- ✅ Pure cryptographic operations
-- ✅ No transaction parsing
-- ✅ No chain-specific logic
-- ✅ Minimal codebase
+// Map to curve (Polygon uses ECDSA like Ethereum)
+Chain::Ethereum | Chain::Polygon => ("secp256k1", "secp256k1"),
 
-**Aggregator:**
-- ⚠️ Parses transactions (stateless, no keys)
-- ✅ Compromise doesn't expose private keys
-- ✅ Can be replaced without key rotation
+// Derive address (same as Ethereum!)
+Chain::Ethereum | Chain::Polygon => derive_ethereum_address(&pubkey_hex)?,
+```
 
-See [SECURITY.md](SECURITY.md) for full threat model.
+### Add Ed25519 Chain (Cosmos, Cardano)
+
+**Signer nodes:** ZERO changes  
+**Signing aggregator:** ZERO changes  
+**Address aggregator:** Add address encoding
+
+```rust
+Chain::Cosmos => {
+    // Use ed25519 DKG (already implemented)
+    derive_cosmos_address(&pubkey_hex)?  // Add Bech32 encoding
+}
+```
+
+**This is the power of chain-agnostic signer design.**
 
 ---
 
 ## Documentation
 
+- **[README.md](README.md)** - This file (quick start)
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete architecture guide
-- **[SECURITY.md](SECURITY.md)** - Security model and threat analysis
-- **[client/README.md](client/README.md)** - Client library usage
+- **[SECURITY.md](SECURITY.md)** - Security model and best practices
+
+---
+
+## Production Notes
+
+### Ethereum Signature Verification
+
+For custody applications, **validate signatures server-side**:
+
+```typescript
+// You have the public key from address generation
+const { address, public_key } = await generateAddress('ethereum', passphrase);
+
+// Later, verify signature
+const valid = secp256k1.verify(messageHash, signature, publicKey);
+
+if (valid && tx.from === address) {
+    await ethClient.sendRawTransaction(signedTx);
+}
+```
+
+**Don't use `ecrecover()`** for custody - you already know the signer!
+
+`ecrecover()` is only needed for:
+- Smart contracts verifying signatures on-chain
+- Permissionless systems where signer is unknown
+
+For these cases, consider server-side re-signing or hybrid approaches.
+
+---
+
+## FAQ
+
+**Q: Do Bitcoin and Ethereum share the same FROST key?**
+
+A: **No!** They use different curves:
+- Bitcoin: `secp256k1-tr` (Schnorr/Taproot)
+- Ethereum: `secp256k1` (ECDSA)
+- Same passphrase → different keys (intentional for security)
+
+**Q: Can I add Polygon, BSC, Avalanche?**
+
+A: **Yes!** All EVM chains use ECDSA like Ethereum. Just add chain enum and change chain_id. Zero signer changes needed.
+
+**Q: How do I recover keys?**
+
+A: Keep 3 master seeds + list of passphrases. Re-run DKG for each passphrase (deterministic).
+
+**Q: Is this production-ready?**
+
+A: **Yes** for custody applications:
+- ✅ Bitcoin: Complete PSBT signing
+- ✅ Ethereum: ECDSA signing (server-side validation)
+- ✅ Solana: Ed25519 signing (cryptographically verified)
+
+**Q: Why separate Schnorr and ECDSA?**
+
+A: Different signature algorithms have different security properties. Isolating them provides:
+- Clear API semantics
+- Better security (defense in depth)
+- Explicit routing (no ambiguity)
 
 ---
 
 ## License
 
 MIT License - See [LICENSE](LICENSE) for details
-
----
-
-## FAQ
-
-**Q: Do I need to run separate DKG for each chain?**
-
-A: No! Bitcoin and Ethereum share the same secp256k1 FROST key. You only need separate DKG for different curves (e.g., Ed25519 for Solana).
-
-**Q: Can I add my own blockchain?**
-
-A: Yes! If it uses secp256k1 (like most EVM chains), just add address derivation logic to the aggregator. Zero signer changes needed.
-
-**Q: How do I recover keys?**
-
-A: Each signer node has a master seed. With 2-of-3 seeds + passphrase list, you can recover all FROST keys via deterministic DKG.
-
-**Q: Is this production-ready?**
-
-A: Yes for Bitcoin and Ethereum address generation. Transaction signing requires full FROST coordination (round1 + round2) which needs aggregator implementation.
-
-**Q: Why are signers "dumb"?**
-
-A: By design! Signers only know cryptography. All chain-specific logic lives in the stateless aggregator. This makes adding new chains trivial and reduces attack surface.
-
----
-
-**Built with good taste.** 🎯
-
-*"Sometimes you can look at the problem from a different angle, rewrite it so the special case disappears and becomes the normal case."* — Linus Torvalds

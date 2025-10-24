@@ -127,7 +127,7 @@ impl MultiChainAggregatorApi {
                     Chain::Bitcoin => {
                         // secp256k1-tr (Taproot/Schnorr) DKG
                         super::dkg_orchestrator::orchestrate_dkg_taproot(
-                            &self.config.signer_urls(),
+                            self.config.signer_urls(),
                             &req.passphrase,
                         )
                         .await
@@ -135,7 +135,7 @@ impl MultiChainAggregatorApi {
                     Chain::Ethereum => {
                         // secp256k1 (ECDSA) DKG
                         super::dkg_orchestrator::orchestrate_dkg_ecdsa(
-                            &self.config.signer_urls(),
+                            self.config.signer_urls(),
                             &req.passphrase,
                         )
                         .await
@@ -143,7 +143,7 @@ impl MultiChainAggregatorApi {
                     Chain::Solana => {
                         // Ed25519 DKG
                         super::dkg_orchestrator::orchestrate_dkg_ed25519(
-                            &self.config.signer_urls(),
+                            self.config.signer_urls(),
                             &req.passphrase,
                         )
                         .await

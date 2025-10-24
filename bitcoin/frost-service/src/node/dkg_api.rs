@@ -1262,7 +1262,7 @@ impl UnifiedApi {
                 self.config.node_index,
                 hex::encode(&recipient_bytes),
                 recipient_bytes.len(),
-                recipient_bytes.get(0).copied().unwrap_or(0),
+                recipient_bytes.first().copied().unwrap_or(0),
                 recipient_bytes.last().copied().unwrap_or(0)
             );
 
@@ -1724,14 +1724,14 @@ impl UnifiedApi {
         let verifying_key = pubkey_package.verifying_key();
         let pubkey_for_verify = verifying_key.serialize().unwrap_or_default();
 
-        tracing::info!(
+        tracing::debug!(
             "FROST verifying signature with pubkey: {}",
             hex::encode(&pubkey_for_verify)
         );
 
         let verified = verifying_key.verify(&message, &signature).is_ok();
 
-        tracing::info!("FROST verification result: {}", verified);
+        tracing::debug!("FROST verification result: {}", verified);
 
         // frost-secp256k1 serialize() returns bytes with type prefix (0x02 or 0x03)
         let sig_serialized = signature
@@ -1739,7 +1739,7 @@ impl UnifiedApi {
             .map_err(|e| format!("Failed to serialize ECDSA signature: {:?}", e))
             .unwrap_or_default();
 
-        tracing::info!(
+        tracing::debug!(
             "FROST ECDSA serialize() = {} bytes, first byte = {:02x}",
             sig_serialized.len(),
             sig_serialized.first().copied().unwrap_or(0)
@@ -1750,11 +1750,11 @@ impl UnifiedApi {
             && (sig_serialized[0] == 0x02 || sig_serialized[0] == 0x03)
         {
             // Skip type prefix to get raw (r, s)
-            tracing::info!("Stripping type prefix byte 0x{:02x}", sig_serialized[0]);
+            tracing::debug!("Stripping type prefix byte 0x{:02x}", sig_serialized[0]);
             &sig_serialized[1..]
         } else if sig_serialized.len() == 64 {
             // Already raw (r, s)
-            tracing::info!("Signature already in raw (r,s) format");
+            tracing::debug!("Signature already in raw (r,s) format");
             &sig_serialized[..]
         } else {
             tracing::warn!(
