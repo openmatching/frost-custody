@@ -43,7 +43,7 @@ async fn main() -> Result<()> {
 
     let api_service = OpenApiService::new(api, "Consensus Ring", "0.1.0");
 
-    let ui = api_service.redoc();
+    let ui = api_service.scalar();
     let spec = api_service.spec_endpoint();
 
     let app = Route::new()
