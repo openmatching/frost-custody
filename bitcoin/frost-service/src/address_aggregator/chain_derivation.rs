@@ -7,7 +7,7 @@
 
 use anyhow::{anyhow, Result};
 use bitcoin::Network;
-use sha2::{Digest, Sha256};
+use sha2::Digest;
 use sha3::Keccak256;
 
 /// Supported chains
@@ -108,38 +108,6 @@ pub fn derive_solana_address(pubkey_hex: &str) -> Result<String> {
 }
 
 /// Hash message according to chain-specific rules
-pub fn hash_message_for_chain(chain: Chain, message: &[u8]) -> Result<Vec<u8>> {
-    match chain {
-        Chain::Bitcoin => {
-            // Bitcoin signed message format
-            let mut msg = Vec::new();
-            msg.extend_from_slice(b"\x18Bitcoin Signed Message:\n");
-            msg.extend_from_slice(&[message.len() as u8]);
-            msg.extend_from_slice(message);
-
-            // Double SHA256
-            let hash1 = Sha256::digest(&msg);
-            let hash2 = Sha256::digest(hash1);
-            Ok(hash2.to_vec())
-        }
-        Chain::Ethereum => {
-            // Ethereum personal_sign format
-            let mut msg = Vec::new();
-            msg.extend_from_slice(b"\x19Ethereum Signed Message:\n");
-            msg.extend_from_slice(message.len().to_string().as_bytes());
-            msg.extend_from_slice(message);
-
-            // Keccak256
-            let hash = Keccak256::digest(&msg);
-            Ok(hash.to_vec())
-        }
-        Chain::Solana => {
-            // Solana signs raw messages (no prefix)
-            Ok(message.to_vec())
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,22 +129,5 @@ mod tests {
         // Should produce a valid 0x... address (42 chars: 0x + 40 hex digits)
         assert!(address.starts_with("0x"));
         assert_eq!(address.len(), 42);
-    }
-
-    #[test]
-    fn test_message_hashing() {
-        let message = b"Hello, World!";
-
-        // Bitcoin should double SHA256 with prefix
-        let btc_hash = hash_message_for_chain(Chain::Bitcoin, message).unwrap();
-        assert_eq!(btc_hash.len(), 32);
-
-        // Ethereum should Keccak256 with prefix
-        let eth_hash = hash_message_for_chain(Chain::Ethereum, message).unwrap();
-        assert_eq!(eth_hash.len(), 32);
-
-        // Solana should return raw message
-        let sol_hash = hash_message_for_chain(Chain::Solana, message).unwrap();
-        assert_eq!(sol_hash, message);
     }
 }

@@ -65,11 +65,6 @@ pub async fn orchestrate_dkg_ed25519(signer_urls: &[String], passphrase: &str) -
     orchestrate_dkg_for_curve(signer_urls, passphrase, "ed25519").await
 }
 
-// Legacy alias (keep for backward compatibility)
-pub async fn orchestrate_dkg(signer_urls: &[String], passphrase: &str) -> Result<String> {
-    orchestrate_dkg_taproot(signer_urls, passphrase).await
-}
-
 /// Generic DKG orchestrator supporting both secp256k1 and Ed25519
 async fn orchestrate_dkg_for_curve(
     signer_urls: &[String],

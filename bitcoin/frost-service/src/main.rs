@@ -2,7 +2,6 @@ use anyhow::Result;
 use std::env;
 
 mod address_aggregator;
-mod common;
 mod config;
 mod curves;
 mod node;
