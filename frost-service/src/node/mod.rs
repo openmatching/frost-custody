@@ -44,7 +44,7 @@ pub async fn run(
     // Single unified API service
     let api_service = OpenApiService::new(api, "FROST Signer Node", "2.0");
 
-    let ui = api_service.rapidoc();
+    let ui = api_service.scalar();
     let spec = api_service.spec_endpoint();
 
     let app = Route::new()

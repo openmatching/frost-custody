@@ -11,7 +11,7 @@ license = "MIT"
 [workspace.dependencies]
 # Web framework
 poem = "3"
-poem-openapi = { version = "5", features = ["rapidoc"] }
+poem-openapi = { version = "5", features = ["scalar"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
