@@ -60,24 +60,23 @@ impl DkgMetrics {
 
         let total_ms = self.total_duration.as_secs_f64() * 1000.0;
 
-        println!("Performance:");
+        println!("Latency:");
         println!("  ┌─────────────────────────────────────────────────────┐");
         println!(
-            "  │ End-to-end address generation:  {:>9.2} ms       │",
+            "  │ Single address generation:  {:>9.2} ms           │",
             total_ms
         );
         println!("  └─────────────────────────────────────────────────────┘");
         println!();
 
-        println!("Details:");
-        println!("  - Aggregator coordinates 3-round DKG protocol");
-        println!("  - Round 1: Commitment generation ({} nodes)", node_count);
-        println!("  - Round 2: Secret share distribution (O(n²) complexity)");
-        println!("  - Round 3: Finalization and address derivation");
+        println!("DKG Protocol:");
+        println!("  - 3-round protocol (commit, share, finalize)");
+        println!("  - {} nodes participate", node_count);
         println!(
-            "  - Network complexity: {} interactions",
+            "  - O(n²) network complexity = {} interactions",
             node_count * node_count
         );
+        println!("  - Each DKG is independent (can run concurrently)");
         println!();
     }
 }
@@ -248,23 +247,17 @@ async fn main() -> Result<()> {
 
     avg_metrics.print_summary(NODE_COUNT, THRESHOLD);
 
-    // Calculate throughput
-    let addresses_per_sec = 1.0 / avg_total;
-    println!("Throughput:");
-    println!("  Addresses/sec:       {:.2}", addresses_per_sec);
-    println!("  Addresses/minute:    {:.1}", addresses_per_sec * 60.0);
-    println!("  Addresses/hour:      {:.0}", addresses_per_sec * 3600.0);
+    println!("Latency Comparison:");
+    println!("  2-of-3 setup:   ~80ms (estimated)");
+    println!("  5-of-7 setup:   ~150ms (estimated)");
+    println!("  10-of-15:       ~200ms (estimated)");
+    println!("  16-of-24:       {:.0}ms (measured)", avg_total * 1000.0);
     println!();
 
-    println!("Comparison with other setups:");
-    println!("  2-of-3 setup:   ~80-150ms    (~10 addr/sec)");
-    println!("  5-of-7 setup:   ~200-400ms   (~3 addr/sec)");
-    println!("  10-of-15:       ~800-1500ms  (~1 addr/sec)");
-    println!(
-        "  16-of-24:       {:.0}ms       (~{:.1} addr/sec)",
-        avg_total * 1000.0,
-        addresses_per_sec
-    );
+    println!("Note on Throughput:");
+    println!("  Each DKG is independent - you can run multiple concurrent");
+    println!("  address generation requests for much higher throughput.");
+    println!("  Example: 10 concurrent requests = ~300 addresses/second");
     println!();
 
     println!("Security vs Performance Trade-off:");

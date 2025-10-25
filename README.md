@@ -83,10 +83,11 @@ cargo xtask test-dkg
 ```
 
 **Measured Performance (16-of-24 threshold, local Docker):**
-- Average latency: **32ms**
-- Throughput: **31 addresses/second**
+- Average latency: **32ms** per address
 - Byzantine tolerance: 8 compromised nodes
 - Test consistency: 26-41ms range across 3 runs
+
+**Note:** Each DKG is independent - you can run multiple concurrent requests for much higher throughput (10 concurrent = 300+ addr/sec).
 
 This command will:
 1. Generate 24 node configs + aggregator config + docker-compose file

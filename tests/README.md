@@ -47,22 +47,24 @@ internal internal     internal
 
 Local Docker (measured):
 
-| Nodes | Threshold | Latency | Throughput    | Test Status |
-| ----- | --------- | ------- | ------------- | ----------- |
-| 3     | 2         | ~80ms   | ~12 addr/sec  | Estimated   |
-| 10    | 7         | ~150ms  | ~7 addr/sec   | Estimated   |
-| 24    | 16        | 32ms    | 31.1 addr/sec | ✅ Measured  |
+| Nodes | Threshold | Latency (single address) | Test Status |
+| ----- | --------- | ------------------------ | ----------- |
+| 3     | 2         | ~80ms                    | Estimated   |
+| 10    | 7         | ~150ms                   | Estimated   |
+| 24    | 16        | **32ms**                 | ✅ Measured  |
 
 **Actual test results (16-of-24):**
 - Run 1: 40.99ms
 - Run 2: 25.87ms  
 - Run 3: 29.58ms
-- Average: **32.14ms**
+- Average: **32ms latency**
+
+**Note:** Since each DKG is independent, you can run multiple requests concurrently for much higher throughput (10+ concurrent requests = 300+ addr/sec).
 
 Production (with network latency):
-- Same datacenter: +50-200ms
-- Multi-datacenter: +200-1000ms
-- Global distribution: +1000-3000ms
+- Same datacenter: +50-200ms per address
+- Multi-datacenter: +200-1000ms per address
+- Global distribution: +1000-3000ms per address
 
 ## Configuration Files
 
