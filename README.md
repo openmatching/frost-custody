@@ -1,6 +1,6 @@
-# FROST Multi-Chain Custody
+# FROST MPC
 
-**Production-ready MPC (Multi-Party Computation) threshold signature custody service**
+**Production-ready Multi-Party Computation threshold signature infrastructure**
 
 Supporting Bitcoin, Ethereum, and Solana with flexible **m-of-n** threshold signatures using FROST protocol.
 

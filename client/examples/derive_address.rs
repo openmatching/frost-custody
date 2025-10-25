@@ -4,7 +4,7 @@
 use anyhow::Result;
 use bitcoin::bip32::Xpub;
 use bitcoin::Network;
-use frost_custody_client::{derive_multisig_address, passphrase_to_derivation_path};
+use frost_mpc_client::{derive_multisig_address, passphrase_to_derivation_path};
 use std::str::FromStr;
 
 fn main() -> Result<()> {

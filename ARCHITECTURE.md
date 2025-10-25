@@ -1,8 +1,8 @@
-# FROST Custody Architecture
+# FROST MPC Architecture
 
 ## Overview
 
-FROST Custody is a **3-tier threshold signing system** that separates concerns between cryptographic operations, key generation, and transaction signing.
+FROST MPC is a **3-tier threshold signing system** that separates concerns between cryptographic operations, key generation, and transaction signing.
 
 ## Design Principles
 

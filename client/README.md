@@ -43,7 +43,7 @@ Complete integration library for exchanges and custodians to work with FROST Cus
 
 ```toml
 [dependencies]
-frost-custody-client = { path = "../client" }
+frost-mpc-client = { path = "../client" }
 bitcoin = "0.32"
 ```
 
@@ -84,7 +84,7 @@ db.execute(
 ### 2. Build and Sign PSBT
 
 ```rust
-use frost_custody_client::{Utxo, build_consolidation_psbt, add_witness_scripts, sign_with_threshold};
+use frost_mpc_client::{Utxo, build_consolidation_psbt, add_witness_scripts, sign_with_threshold};
 
 // Get UTXOs from database
 let utxos = vec![
@@ -145,7 +145,7 @@ cd .. && cargo run --example frost_aggregator_example
 ### Option A: Traditional Multisig
 
 ```rust
-use frost_custody_client::*;
+use frost_mpc_client::*;
 use bitcoin::bip32::Xpub;
 use uuid::Uuid;
 

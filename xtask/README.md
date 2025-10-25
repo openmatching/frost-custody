@@ -1,4 +1,4 @@
-# xtask - FROST Custody Task Runner
+# xtask - FROST MPC Task Runner
 
 Rust-based task runner that replaces Makefiles and shell scripts with a single, type-safe binary.
 

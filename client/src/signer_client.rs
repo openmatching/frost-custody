@@ -73,7 +73,7 @@ impl SignerClient {
 ///
 /// # Example
 /// ```no_run
-/// use frost_custody_client::signer_client::sign_with_threshold;
+/// use frost_mpc_client::signer_client::sign_with_threshold;
 ///
 /// let signer_urls = vec![
 ///     "http://node0:3000".to_string(),

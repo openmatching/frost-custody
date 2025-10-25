@@ -1,7 +1,7 @@
 services:
   # Traditional Multisig Nodes (ports 3000-3002)
   multisig-node0:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     build: .
     container_name: multisig-node-0
     entrypoint: ["multisig-signer"]
@@ -14,7 +14,7 @@ services:
       - signer-net
 
   multisig-node1:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: multisig-node-1
     entrypoint: ["multisig-signer"]
     volumes:
@@ -26,7 +26,7 @@ services:
       - signer-net
 
   multisig-node2:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: multisig-node-2
     entrypoint: ["multisig-signer"]
     volumes:
@@ -39,7 +39,7 @@ services:
 
   # FROST Signer Nodes (ports 4000-4002, internal only)
   frost-node0:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-signer-node-0
     entrypoint: ["frost-service"]
     volumes:
@@ -50,7 +50,7 @@ services:
     # role = "node" in config
 
   frost-node1:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-signer-node-1
     entrypoint: ["frost-service"]
     volumes:
@@ -59,7 +59,7 @@ services:
       - frost-internal
 
   frost-node2:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-signer-node-2
     entrypoint: ["frost-service"]
     volumes:
@@ -69,7 +69,7 @@ services:
 
   # FROST Address Aggregator (port 9000, exposed to CEX, LOW RISK)
   address-aggregator:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: address-aggregator
     entrypoint: ["frost-service"]
     volumes:
@@ -88,7 +88,7 @@ services:
 
   # FROST Signing Aggregator (port 8000, HIGH RISK - RESTRICT ACCESS!)
   signing-aggregator:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: signing-aggregator
     entrypoint: ["frost-service"]
     volumes:
@@ -114,7 +114,7 @@ networks:
   cex-network:
     driver: bridge
     # CEX backend connects here
-# FROST Custody - Bitcoin threshold signing system
+# FROST MPC - Multi-Party Computation threshold signing system
 # Profiles for different deployment scenarios:
 #   docker-compose up multisig-node0 multisig-node1 multisig-node2  # Traditional multisig only
 #   docker-compose up frost-node0 frost-node1 frost-node2 frost-aggregator  # FROST only

@@ -4,7 +4,7 @@
 use anyhow::{Context, Result};
 use bitcoin::bip32::Xpub;
 use bitcoin::{Address, Amount, Network, Txid};
-use frost_custody_client::{
+use frost_mpc_client::{
     add_witness_scripts, build_consolidation_psbt, derive_multisig_address, psbt_from_base64,
     psbt_to_base64, sign_with_threshold, Utxo,
 };

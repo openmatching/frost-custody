@@ -6,7 +6,7 @@ use std::time::Duration;
 
 #[derive(Parser)]
 #[command(name = "xtask")]
-#[command(about = "FROST Custody task runner", long_about = None)]
+#[command(about = "FROST MPC task runner", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -116,7 +116,7 @@ fn main() -> Result<()> {
 }
 
 fn build() -> Result<()> {
-    println!("🔨 Building frost-custody image...");
+    println!("🔨 Building frost-mpc image...");
     run_cmd("docker-compose", &["build"])?;
     Ok(())
 }
@@ -225,7 +225,7 @@ fn clean() -> Result<()> {
 
     println!("🗑️  Removing image...");
     // Ignore error if image doesn't exist
-    let _ = run_cmd("docker", &["rmi", "frost-custody:latest"]);
+    let _ = run_cmd("docker", &["rmi", "frost-mpc:latest"]);
 
     Ok(())
 }
@@ -335,7 +335,7 @@ fn generate_docker_compose(node_count: usize) -> Result<()> {
         services.push_str(&format!(
             r#"
   frost-node-{i:02}:
-    image: frost-custody:latest{build_context}
+    image: frost-mpc:latest{build_context}
     container_name: frost-test-node-{i:02}
     entrypoint: ["frost-service"]
     environment:
@@ -382,7 +382,7 @@ services:
 {services}
   # Address Aggregator - Single public endpoint
   address-aggregator:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-aggregator
     entrypoint: ["frost-service"]
     environment:

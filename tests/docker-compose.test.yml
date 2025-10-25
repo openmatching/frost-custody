@@ -14,7 +14,7 @@ services:
   # 24 FROST Signer Nodes (internal only, no exposed ports)
 
   frost-node-00:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     build:
       context: ..
       dockerfile: Dockerfile
@@ -30,7 +30,7 @@ services:
 
 
   frost-node-01:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-01
     entrypoint: ["frost-service"]
     environment:
@@ -43,7 +43,7 @@ services:
 
 
   frost-node-02:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-02
     entrypoint: ["frost-service"]
     environment:
@@ -56,7 +56,7 @@ services:
 
 
   frost-node-03:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-03
     entrypoint: ["frost-service"]
     environment:
@@ -69,7 +69,7 @@ services:
 
 
   frost-node-04:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-04
     entrypoint: ["frost-service"]
     environment:
@@ -82,7 +82,7 @@ services:
 
 
   frost-node-05:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-05
     entrypoint: ["frost-service"]
     environment:
@@ -95,7 +95,7 @@ services:
 
 
   frost-node-06:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-06
     entrypoint: ["frost-service"]
     environment:
@@ -108,7 +108,7 @@ services:
 
 
   frost-node-07:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-07
     entrypoint: ["frost-service"]
     environment:
@@ -121,7 +121,7 @@ services:
 
 
   frost-node-08:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-08
     entrypoint: ["frost-service"]
     environment:
@@ -134,7 +134,7 @@ services:
 
 
   frost-node-09:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-09
     entrypoint: ["frost-service"]
     environment:
@@ -147,7 +147,7 @@ services:
 
 
   frost-node-10:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-10
     entrypoint: ["frost-service"]
     environment:
@@ -160,7 +160,7 @@ services:
 
 
   frost-node-11:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-11
     entrypoint: ["frost-service"]
     environment:
@@ -173,7 +173,7 @@ services:
 
 
   frost-node-12:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-12
     entrypoint: ["frost-service"]
     environment:
@@ -186,7 +186,7 @@ services:
 
 
   frost-node-13:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-13
     entrypoint: ["frost-service"]
     environment:
@@ -199,7 +199,7 @@ services:
 
 
   frost-node-14:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-14
     entrypoint: ["frost-service"]
     environment:
@@ -212,7 +212,7 @@ services:
 
 
   frost-node-15:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-15
     entrypoint: ["frost-service"]
     environment:
@@ -225,7 +225,7 @@ services:
 
 
   frost-node-16:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-16
     entrypoint: ["frost-service"]
     environment:
@@ -238,7 +238,7 @@ services:
 
 
   frost-node-17:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-17
     entrypoint: ["frost-service"]
     environment:
@@ -251,7 +251,7 @@ services:
 
 
   frost-node-18:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-18
     entrypoint: ["frost-service"]
     environment:
@@ -264,7 +264,7 @@ services:
 
 
   frost-node-19:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-19
     entrypoint: ["frost-service"]
     environment:
@@ -277,7 +277,7 @@ services:
 
 
   frost-node-20:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-20
     entrypoint: ["frost-service"]
     environment:
@@ -290,7 +290,7 @@ services:
 
 
   frost-node-21:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-21
     entrypoint: ["frost-service"]
     environment:
@@ -303,7 +303,7 @@ services:
 
 
   frost-node-22:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-22
     entrypoint: ["frost-service"]
     environment:
@@ -316,7 +316,7 @@ services:
 
 
   frost-node-23:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-node-23
     entrypoint: ["frost-service"]
     environment:
@@ -330,7 +330,7 @@ services:
 
   # Address Aggregator - Single public endpoint
   address-aggregator:
-    image: frost-custody:latest
+    image: frost-mpc:latest
     container_name: frost-test-aggregator
     entrypoint: ["frost-service"]
     environment:
