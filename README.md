@@ -7,8 +7,9 @@ Supporting Bitcoin, Ethereum, and Solana with flexible **m-of-n** threshold sign
 ## Quick Start
 
 ```bash
-# Start FROST services
-make up-frost
+# Build and start FROST services
+cargo xtask build
+cargo xtask up frost
 
 # Generate addresses
 curl -X POST http://localhost:9000/api/address/generate \
@@ -16,7 +17,183 @@ curl -X POST http://localhost:9000/api/address/generate \
   -d '{"chain": "bitcoin", "passphrase": "user-wallet-001"}'
 
 # Returns: {"address": "bc1p...", "public_key": "03...", "curve": "secp256k1-tr"}
+
+# View logs
+cargo xtask logs --follow
+
+# Stop services
+cargo xtask down
 ```
+
+## Running Examples
+
+### Bitcoin Address Generation
+
+```bash
+# Start services
+cargo xtask up frost
+
+# Generate Bitcoin address via client library
+cargo run --example derive_address
+
+# Or use FROST threshold address generation
+curl -X POST http://localhost:9000/api/address/generate \
+  -H "Content-Type: application/json" \
+  -d '{"chain": "bitcoin", "passphrase": "unique-wallet-id"}'
+```
+
+### Bitcoin Transaction Signing (FROST)
+
+```bash
+# Example: Sign Bitcoin PSBT with 2-of-3 threshold
+cargo run --example sign_psbt_frost
+
+# This will:
+# 1. Generate 3 addresses via FROST DKG
+# 2. Create a Bitcoin transaction
+# 3. Sign with 2-of-3 threshold signature
+```
+
+### Multi-Chain Examples
+
+```bash
+# Ethereum signing
+cargo run --example sign_eth_frost
+
+# Solana signing  
+cargo run --example sign_sol_frost
+```
+
+## Testing
+
+### Run All Tests
+
+```bash
+cargo xtask test      # Unit tests
+cargo xtask clippy    # Linter
+```
+
+### DKG Latency Test (16-of-24 Nodes)
+
+Comprehensive test with 24 signer nodes and 16-of-24 threshold:
+
+```bash
+# Complete automated test
+cargo xtask test-dkg
+```
+
+**Measured Performance (16-of-24 threshold, local Docker):**
+- Average latency: **32ms**
+- Throughput: **31 addresses/second**
+- Byzantine tolerance: 8 compromised nodes
+- Test consistency: 26-41ms range across 3 runs
+
+This command will:
+1. Generate 24 node configs + aggregator config + docker-compose file
+2. Build Docker images
+3. Start all 24 nodes + aggregator
+4. Run DKG latency measurements (3 iterations)
+5. Clean up everything
+
+**Custom configurations:**
+
+```bash
+# Test with 10 nodes, 7-of-10 threshold
+cargo xtask gen-configs --nodes 10 --threshold 7
+cargo xtask test-dkg
+
+# Test with 15 nodes, 10-of-15 threshold
+cargo xtask gen-configs --nodes 15 --threshold 10
+cargo xtask test-dkg
+```
+
+The test generates all necessary files dynamically based on your parameters.
+
+**Performance expectations:**
+- Local Docker: 30-150ms (measured)
+- Same datacenter: 100-400ms (estimated)
+- Multi-datacenter: 500-2000ms (estimated)
+
+---
+
+## API Reference
+
+### Generate Addresses
+
+**Bitcoin:**
+```bash
+curl -X POST http://localhost:9000/api/address/generate \
+  -H "Content-Type: application/json" \
+  -d '{"chain": "bitcoin", "passphrase": "unique-id-123"}'
+```
+
+**Ethereum:**
+```bash
+curl -X POST http://localhost:9000/api/address/generate \
+  -H "Content-Type: application/json" \
+  -d '{"chain": "ethereum", "passphrase": "unique-id-456"}'
+```
+
+**Solana:**
+```bash
+curl -X POST http://localhost:9000/api/address/generate \
+  -H "Content-Type: application/json" \
+  -d '{"chain": "solana", "passphrase": "unique-id-789"}'
+```
+
+### Sign Messages/Transactions
+
+```bash
+curl -X POST http://localhost:8000/api/sign/message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "passphrase": "unique-id-123",
+    "message": "SGVsbG8gV29ybGQ="
+  }'
+```
+
+See API documentation: http://localhost:9000/docs
+
+---
+
+## Troubleshooting
+
+```bash
+# Check service status
+docker ps
+
+# View logs
+cargo xtask logs --follow
+cargo xtask logs address-aggregator
+cargo xtask logs signing-aggregator
+
+# Rebuild everything
+cargo xtask clean
+cargo xtask build
+cargo xtask up frost
+
+# Verify services are responding
+curl http://localhost:9000/docs  # Address aggregator
+curl http://localhost:8000/docs  # Signing aggregator
+```
+
+---
+
+## Command Reference
+
+| Task                  | Command                     |
+| --------------------- | --------------------------- |
+| See all commands      | `cargo xtask --help`        |
+| Build images          | `cargo xtask build`         |
+| Start FROST           | `cargo xtask up frost`      |
+| Start all services    | `cargo xtask up all`        |
+| View logs             | `cargo xtask logs --follow` |
+| Run tests             | `cargo xtask test`          |
+| Run clippy            | `cargo xtask clippy`        |
+| Generate test configs | `cargo xtask gen-configs`   |
+| DKG latency test      | `cargo xtask test-dkg`      |
+| Stop services         | `cargo xtask down`          |
+| Complete cleanup      | `cargo xtask clean`         |
 
 ---
 
@@ -351,9 +528,10 @@ Chain::Cosmos => {
 
 ## Documentation
 
-- **[README.md](README.md)** - This file (quick start)
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete architecture guide
 - **[SECURITY.md](SECURITY.md)** - Security model and best practices
+- **[xtask/README.md](xtask/README.md)** - Task runner documentation
+- **[tests/README.md](tests/README.md)** - DKG test suite guide
 
 ---
 

@@ -1,5 +1,11 @@
 [workspace]
-members = ["frost-service", "legacy-multisig", "client"]
+members = [
+    "frost-service",
+    "legacy-multisig",
+    "client",
+    "tests/dkg-latency",
+    "xtask",
+]
 resolver = "2"
 
 [workspace.package]
