@@ -25,7 +25,7 @@
 
 **FROST MPC solution:**
 - 1 passphrase per user = 1 unique address
-- Backup: n master seeds + passphrase database
+- Backup: n master seeds
 - API-based signing (no manual intervention)
 - Threshold security (m-of-n tolerance)
 - Small transactions (same as single-sig)
