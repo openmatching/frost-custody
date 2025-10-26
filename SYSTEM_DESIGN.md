@@ -85,14 +85,13 @@
    min_signers = m   # Threshold (e.g., 2, 3, 18)
    ```
 
-3. **Passphrase Database**
+3. **Passphrase**
    ```
    user_id → passphrase (any string, high-entropy recommended)
    12345 → 550e8400-...  # UUID
    67890 → a3f5b9c2...   # hex
    99999 → 3J98t1Wp...   # base58
    ```
-   Store encrypted, separate from nodes
 
 ### Recovery (Total Infrastructure Loss)
 
