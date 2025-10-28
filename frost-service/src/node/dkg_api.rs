@@ -16,12 +16,14 @@ use crate::config::NodeConfig;
 use crate::curves::ed25519::Ed25519Operations;
 use crate::curves::secp256k1::Secp256k1Operations;
 use crate::curves::CurveType;
+use crate::node::key_provider::MasterKeyProvider;
 use crate::node::multi_storage::{CurveStorage, MultiCurveStorage};
 
 pub struct UnifiedApi {
     pub config: Arc<NodeConfig>,
     pub storage: Arc<MultiCurveStorage>,
     pub dkg_state: Arc<crate::node::dkg_state::DkgState>,
+    pub key_provider: Box<dyn MasterKeyProvider>,
 }
 
 #[derive(Debug, Object)]
@@ -231,8 +233,8 @@ impl UnifiedApi {
         tracing::info!("DKG Round 1 for passphrase (secp256k1)");
 
         // Generate round1 package with deterministic RNG
-        match crate::node::derivation::dkg_part1(
-            &self.config.master_seed(),
+        match crate::node::derivation::dkg_part1_with_provider(
+            self.key_provider.as_ref(),
             &passphrase,
             self.config.node_index,
             self.config.max_signers,
@@ -543,10 +545,10 @@ impl UnifiedApi {
         // Serialize and encrypt nonces (bound to message)
         let message_bytes = hex::decode(&req.message).unwrap();
         let nonces_json = serde_json::to_vec(&nonces).unwrap();
-        let encrypted_nonces = match super::crypto::encrypt_nonces(
+        let encrypted_nonces = match super::crypto::encrypt_nonces_with_provider(
             &nonces_json,
             &message_bytes,
-            &self.config.master_seed(),
+            self.key_provider.as_ref(),
         ) {
             Ok(enc) => enc,
             Err(e) => {
@@ -582,10 +584,10 @@ impl UnifiedApi {
         };
 
         // Decrypt nonces
-        let nonces_json = match super::crypto::decrypt_nonces(
+        let nonces_json = match super::crypto::decrypt_nonces_with_provider(
             &req.encrypted_nonces,
             &message,
-            &self.config.master_seed(),
+            self.key_provider.as_ref(),
         ) {
             Ok(json) => json,
             Err(e) => {
@@ -803,8 +805,8 @@ impl UnifiedApi {
         tracing::info!("DKG Round 1 for passphrase (secp256k1 ECDSA)");
 
         // Use same deterministic DKG as Taproot but with different seed prefix
-        match crate::node::derivation::dkg_part1_ecdsa(
-            &self.config.master_seed(),
+        match crate::node::derivation::dkg_part1_ecdsa_with_provider(
+            self.key_provider.as_ref(),
             &passphrase,
             self.config.node_index,
             self.config.max_signers,
@@ -1098,31 +1100,12 @@ impl UnifiedApi {
         tracing::info!("DKG Round 1 for passphrase (Ed25519)");
 
         // Generate round1 package with deterministic RNG
-        use rand::SeedableRng;
-        use rand_chacha::ChaCha20Rng;
-        use sha2::{Digest, Sha256};
-
-        let mut seed_material = self.config.master_seed().clone();
-        seed_material.extend_from_slice(b"ed25519:");
-        seed_material.extend_from_slice(passphrase.as_bytes());
-        let seed_hash = Sha256::digest(&seed_material);
-        let seed: [u8; 32] = seed_hash.into();
-        let mut rng = ChaCha20Rng::from_seed(seed);
-
-        let participant_id = match frost_ed25519::Identifier::try_from(self.config.node_index + 1) {
-            Ok(id) => id,
-            Err(e) => {
-                return DkgRound1Result::InternalError(Json(ErrorResponse {
-                    error: format!("Failed to create participant identifier: {:?}", e),
-                }))
-            }
-        };
-
-        match frost_ed25519::keys::dkg::part1(
-            participant_id,
+        match crate::node::derivation::dkg_part1_ed25519_with_provider(
+            self.key_provider.as_ref(),
+            &passphrase,
+            self.config.node_index,
             self.config.max_signers,
             self.config.min_signers,
-            &mut rng,
         ) {
             Ok((secret_package, package)) => {
                 // Store secret package for round 2
@@ -1489,10 +1472,10 @@ impl UnifiedApi {
         // Encrypt nonces
         let message_bytes = hex::decode(&req.message).unwrap();
         let nonces_json = serde_json::to_vec(&nonces).unwrap();
-        let encrypted_nonces = match super::crypto::encrypt_nonces(
+        let encrypted_nonces = match super::crypto::encrypt_nonces_with_provider(
             &nonces_json,
             &message_bytes,
-            &self.config.master_seed(),
+            self.key_provider.as_ref(),
         ) {
             Ok(enc) => enc,
             Err(e) => {
@@ -1527,10 +1510,10 @@ impl UnifiedApi {
         };
 
         // Decrypt nonces
-        let nonces_json = match super::crypto::decrypt_nonces(
+        let nonces_json = match super::crypto::decrypt_nonces_with_provider(
             &req.encrypted_nonces,
             &message,
-            &self.config.master_seed(),
+            self.key_provider.as_ref(),
         ) {
             Ok(json) => json,
             Err(e) => {
@@ -1832,10 +1815,10 @@ impl UnifiedApi {
         // Encrypt nonces
         let message_bytes = hex::decode(&req.message).unwrap();
         let nonces_json = serde_json::to_vec(&nonces).unwrap();
-        let encrypted_nonces = match super::crypto::encrypt_nonces(
+        let encrypted_nonces = match super::crypto::encrypt_nonces_with_provider(
             &nonces_json,
             &message_bytes,
-            &self.config.master_seed(),
+            self.key_provider.as_ref(),
         ) {
             Ok(enc) => enc,
             Err(e) => {
@@ -1870,10 +1853,10 @@ impl UnifiedApi {
         };
 
         // Decrypt nonces
-        let nonces_json = match super::crypto::decrypt_nonces(
+        let nonces_json = match super::crypto::decrypt_nonces_with_provider(
             &req.encrypted_nonces,
             &message,
-            &self.config.master_seed(),
+            self.key_provider.as_ref(),
         ) {
             Ok(json) => json,
             Err(e) => {

@@ -182,19 +182,20 @@ curl http://localhost:8000/docs  # Signing aggregator
 
 ## Command Reference
 
-| Task                  | Command                     |
-| --------------------- | --------------------------- |
-| See all commands      | `cargo xtask --help`        |
-| Build images          | `cargo xtask build`         |
-| Start FROST           | `cargo xtask up frost`      |
-| Start all services    | `cargo xtask up all`        |
-| View logs             | `cargo xtask logs --follow` |
-| Run tests             | `cargo xtask test`          |
-| Run clippy            | `cargo xtask clippy`        |
-| Generate test configs | `cargo xtask gen-configs`   |
-| DKG latency test      | `cargo xtask test-dkg`      |
-| Stop services         | `cargo xtask down`          |
-| Complete cleanup      | `cargo xtask clean`         |
+| Task                  | Command                       |
+| --------------------- | ----------------------------- |
+| See all commands      | `cargo xtask --help`          |
+| Build images          | `cargo xtask build`           |
+| Start FROST           | `cargo xtask up frost`        |
+| Start FROST (SoftHSM) | `cd hsm && docker-compose up` |
+| Start all services    | `cargo xtask up all`          |
+| View logs             | `cargo xtask logs --follow`   |
+| Run tests             | `cargo xtask test`            |
+| Run clippy            | `cargo xtask clippy`          |
+| Generate test configs | `cargo xtask gen-configs`     |
+| DKG latency test      | `cargo xtask test-dkg`        |
+| Stop services         | `cargo xtask down`            |
+| Complete cleanup      | `cargo xtask clean`           |
 
 ---
 
@@ -373,14 +374,21 @@ make logs-frost
 ### Key Management
 
 **Backup:**
-- 3 master seeds (one per signer node)
+- Master seeds (one per signer node) - can be plaintext or hardware-backed
 - List of passphrases (from your database)
 
 **Recovery:**
 - Re-run DKG for each passphrase
 - Deterministic → same keys recovered
 
-**See [SECURITY.md](SECURITY.md) for full threat model.**
+**Hardware Security:**
+- PKCS#11 support (enabled by default)
+- Works with YubiKey ($55), Thales HSM, AWS CloudHSM, or any PKCS#11 device
+- Master key never in plaintext
+- Test with: `cargo xtask test-dkg --hsm` (SoftHSM)
+- Setup: [CONFIG_HSM.md](frost-service/CONFIG_HSM.md)
+
+**See [SECURITY.md](SECURITY.md) and [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) for deployment guide.**
 
 ---
 
@@ -453,10 +461,6 @@ Each service needs a config file:
 ```toml
 [network]
 type = "mainnet"  # or "testnet"
-# Optional: Override per chain
-bitcoin_network = "mainnet"   # mainnet, testnet, signet, regtest
-ethereum_network = "mainnet"  # mainnet, sepolia, goerli, holesky
-solana_network = "mainnet-beta"  # mainnet-beta, testnet, devnet
 
 [server]
 role = "node"           # node | address | signer
@@ -465,7 +469,7 @@ port = 4000
 
 [node]
 index = 0
-master_seed_hex = "..."
+master_seed_hex = "..."  # OR use hardware HSM (see below)
 storage_path = "./data/node0"
 max_signers = 5         # n (total number of signers)
 min_signers = 3         # m (minimum required to sign)
@@ -476,13 +480,20 @@ min_signers = 3         # m (minimum required to sign)
 - `min_signers` = m (minimum required for signing)
 - Examples: 2-of-3, 3-of-5, 5-of-7, or any m-of-n
 
-**Network Configuration:**
-- Bitcoin: `mainnet`, `testnet`, `signet`, `regtest`
-- Ethereum: `mainnet` (1), `sepolia` (11155111), `goerli` (5), `holesky` (17000)
-- Solana: `mainnet-beta`, `testnet`, `devnet`
-- Set `type = "testnet"` to default all chains to testnet
+**Hardware Security (PKCS#11 - enabled by default):**
 
-See `config.toml.example` and `config-testnet.toml` for examples.
+```toml
+[node.key_provider]
+type = "pkcs11"
+pkcs11_library = "/usr/lib/libykcs11.so"  # YubiKey, Thales, AWS CloudHSM, etc.
+slot = 0
+pin = "${HSM_PIN}"
+key_label = "frost-node-0"
+```
+
+Works with ANY PKCS#11 device. Test with SoftHSM: `cargo xtask test-dkg --hsm`
+
+See `config-pkcs11.toml.example` and `frost-service/CONFIG_HSM.md` for details.
 
 ---
 
@@ -529,10 +540,10 @@ Chain::Cosmos => {
 
 ## Documentation
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete architecture guide
-- **[SECURITY.md](SECURITY.md)** - Security model and best practices
-- **[xtask/README.md](xtask/README.md)** - Task runner documentation
-- **[tests/README.md](tests/README.md)** - DKG test suite guide
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture
+- **[SECURITY.md](SECURITY.md)** - Security model and passphrase best practices
+- **[SYSTEM_DESIGN.md](SYSTEM_DESIGN.md)** - Deployment, threat model, and HSM options
+- **[frost-service/CONFIG_HSM.md](frost-service/CONFIG_HSM.md)** - PKCS#11 setup (YubiKey, Thales, AWS)
 
 ---
 

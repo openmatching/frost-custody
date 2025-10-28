@@ -1,10 +1,19 @@
 use anyhow::{Context, Result};
 use bitcoin::hashes::{sha256, Hash};
+use super::key_provider::MasterKeyProvider;
+use rand::RngCore;
 
-/// Encrypt nonces with key package secret for secure client-side storage
-pub fn encrypt_nonces(nonces_json: &[u8], message: &[u8], master_seed: &[u8]) -> Result<String> {
-    // Use key_package as encryption key
-    let key_hash = sha256::Hash::hash(master_seed);
+/// Encrypt nonces with deterministic key for secure server-side storage
+pub fn encrypt_nonces_with_provider(
+    nonces_json: &[u8],
+    message: &[u8],
+    key_provider: &dyn MasterKeyProvider,
+) -> Result<String> {
+    // Derive deterministic encryption key from provider
+    let mut rng = key_provider.derive_rng("nonce-encryption", "")?;
+    let mut key_bytes = [0u8; 32];
+    rng.fill_bytes(&mut key_bytes);
+    let key_hash = sha256::Hash::hash(&key_bytes);
 
     // Bind encryption to message (prevents reuse with different message)
     let message_hash = sha256::Hash::hash(message);
@@ -23,7 +32,11 @@ pub fn encrypt_nonces(nonces_json: &[u8], message: &[u8], master_seed: &[u8]) ->
 }
 
 /// Decrypt nonces and verify message binding
-pub fn decrypt_nonces(encrypted_hex: &str, message: &[u8], master_seed: &[u8]) -> Result<Vec<u8>> {
+pub fn decrypt_nonces_with_provider(
+    encrypted_hex: &str,
+    message: &[u8],
+    key_provider: &dyn MasterKeyProvider,
+) -> Result<Vec<u8>> {
     let encrypted = hex::decode(encrypted_hex).context("Invalid encrypted nonce hex")?;
 
     if encrypted.len() < 32 {
@@ -40,8 +53,11 @@ pub fn decrypt_nonces(encrypted_hex: &str, message: &[u8], master_seed: &[u8]) -
         anyhow::bail!("Message mismatch - nonce was generated for different message");
     }
 
-    // Decrypt
-    let key_hash = sha256::Hash::hash(master_seed);
+    // Decrypt with same deterministic key
+    let mut rng = key_provider.derive_rng("nonce-encryption", "")?;
+    let mut key_bytes = [0u8; 32];
+    rng.fill_bytes(&mut key_bytes);
+    let key_hash = sha256::Hash::hash(&key_bytes);
 
     let mut decrypted = Vec::new();
     for (i, &byte) in ciphertext.iter().enumerate() {

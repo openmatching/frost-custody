@@ -305,24 +305,46 @@ If ≥m nodes compromised:
 
 ---
 
+## Hardware Security (PKCS#11)
+
+**PKCS#11 support enabled by default** - works with any compliant device.
+
+**Supported:**
+- SoftHSM ($0, testing) - `cargo xtask test-dkg --hsm`
+- YubiKey ($55, USB token)
+- Thales HSM ($5K+, enterprise)
+- AWS CloudHSM ($1K/month, cloud)
+
+**Config:**
+```toml
+[node.key_provider]
+type = "pkcs11"
+pkcs11_library = "/usr/lib/libykcs11.so"  # Device-specific
+pin = "${HSM_PIN}"
+key_label = "frost-node-0"
+```
+
+**Dockerfiles:**
+- `Dockerfile` - Production (lean, ~150MB)
+- `Dockerfile.softhsm` - Testing (with SoftHSM, ~200MB)
+
+Setup: `frost-service/CONFIG_HSM.md` | Testing: `hsm/README.md`
+
+---
+
 ## Summary
 
-**Keeps Funds Safe:**
-1. Threshold security (need ≥m nodes)
-2. Passphrase entropy (high-entropy, not sequential)
-3. Network isolation (no direct node access)
-4. Master seed backups (all n seeds)
+**Security:**
+1. Threshold (need ≥m nodes)
+2. Passphrase entropy (high-entropy)
+3. Network isolation
+4. HSM-backed keys (PKCS#11)
 
-**Single Points of Failure:**
-- All n master seeds → total loss
-- ≥m node data + passphrase DB → theft
-
-**Key Limitations:**
-- No key rotation (must migrate funds on-chain)
-- Compromise ≥m nodes → emergency migration required
-- Defense in depth is only protection
+**Limitations:**
+- No key rotation (on-chain migration required)
+- ≥m nodes compromised → emergency migration
 
 **Flexibility:**
-- Any m-of-n configuration (2-of-3 to 18-of-24+)
-- Higher n = more availability
-- Higher m = more security (less fault tolerance)
+- Any m-of-n (2-of-3 to 18-of-24+)
+- Any PKCS#11 device
+- Plaintext or hardware-backed keys

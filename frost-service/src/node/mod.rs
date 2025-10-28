@@ -4,6 +4,7 @@ pub mod crypto;
 pub mod derivation;
 pub mod dkg_api;
 pub mod dkg_state;
+pub mod key_provider;
 pub mod multi_storage;
 
 use anyhow::Result;
@@ -34,11 +35,19 @@ pub async fn run(
     // Create shared DKG state
     let dkg_state = Arc::new(dkg_state::DkgState::new());
 
+    // Create key provider
+    let key_provider = node_config.create_key_provider()?;
+    tracing::info!(
+        "✅ Key provider initialized: {}",
+        key_provider.description()
+    );
+
     // Create unified API (pubkey queries + DKG + FROST signing all in one)
     let api = dkg_api::UnifiedApi {
         config: Arc::new(node_config.clone()),
         storage: multi_storage,
         dkg_state,
+        key_provider,
     };
 
     // Single unified API service

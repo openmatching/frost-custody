@@ -1,6 +1,10 @@
+# Dockerfile for SoftHSM Testing ONLY
+# This is NOT the production Dockerfile
+# Use this only for testing PKCS#11 integration in hsm/ directory
+
 FROM rust:bullseye AS builder
 
-# Install dependencies for compilation (including RocksDB requirements)
+# Install build dependencies
 RUN --mount=type=cache,target=/var/lib/apt/lists \
     apt-get update && apt-get install -y \
     build-essential \
@@ -14,25 +18,28 @@ RUN --mount=type=cache,target=/var/lib/apt/lists \
 WORKDIR /app
 COPY . .
 
-# Build all binaries (PKCS#11 enabled by default)
+# Build with PKCS#11 support (default feature)
 RUN --mount=type=cache,target=/app/target \
     --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --workspace \
-    && cp target/release/multisig-signer /usr/local/bin/ \
     && cp target/release/frost-service /usr/local/bin/
 
 FROM debian:bullseye-slim
 
-# Install minimal runtime dependencies (NO SoftHSM - keeps image small)
+# Install SoftHSM + tools (TESTING ONLY)
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    softhsm2 \
+    opensc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy all binaries
-COPY --from=builder /usr/local/bin/multisig-signer /usr/local/bin/
 COPY --from=builder /usr/local/bin/frost-service /usr/local/bin/
+COPY hsm/docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV CONFIG_PATH=/etc/config.toml
+ENV SOFTHSM2_CONF=/etc/softhsm2.conf
 
-# Default entrypoint (can be overridden)
-ENTRYPOINT ["multisig-signer"]
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["frost-service"]
+

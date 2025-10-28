@@ -48,5 +48,12 @@ borsh = "1.5"
 # Additional crypto
 sha2 = "0.10"
 
+# PKCS#11 / HSM support (optional)
+cryptoki = { version = "0.6", optional = true }
+
+[features]
+default = ["pkcs11"]  # HSM support enabled by default (production-ready)
+pkcs11 = ["cryptoki"]
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
