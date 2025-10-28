@@ -18,12 +18,15 @@ use crate::curves::secp256k1::Secp256k1Operations;
 use crate::curves::CurveType;
 use crate::node::key_provider::MasterKeyProvider;
 use crate::node::multi_storage::{CurveStorage, MultiCurveStorage};
+use crate::node::unlock_api::*;
+
+use std::sync::Mutex;
 
 pub struct UnifiedApi {
     pub config: Arc<NodeConfig>,
     pub storage: Arc<MultiCurveStorage>,
     pub dkg_state: Arc<crate::node::dkg_state::DkgState>,
-    pub key_provider: Box<dyn MasterKeyProvider>,
+    pub key_provider: Arc<Mutex<Box<dyn MasterKeyProvider>>>,
 }
 
 #[derive(Debug, Object)]
@@ -107,6 +110,55 @@ pub enum DkgFinalizeResult {
 
 #[OpenApi]
 impl UnifiedApi {
+    // ========================================================================
+    // HSM Lock/Unlock (for PKCS#11 providers)
+    // ========================================================================
+
+    /// Unlock HSM with PIN
+    #[oai(path = "/api/hsm/unlock", method = "post")]
+    async fn unlock_hsm(&self, req: Json<UnlockRequest>) -> UnlockResult {
+        let mut provider = self.key_provider.lock().unwrap();
+
+        match provider.unlock(&req.pin) {
+            Ok(true) => UnlockResult::Ok(Json(UnlockResponse {
+                success: true,
+                message: "HSM unlocked successfully".to_string(),
+            })),
+            Ok(false) => UnlockResult::Ok(Json(UnlockResponse {
+                success: true,
+                message: "HSM already unlocked".to_string(),
+            })),
+            Err(e) => {
+                UnlockResult::BadRequest(Json(crate::node::unlock_api::UnlockErrorResponse {
+                    error: format!("Failed to unlock HSM: {}", e),
+                }))
+            }
+        }
+    }
+
+    /// Lock HSM (clear PIN from memory)
+    #[oai(path = "/api/hsm/lock", method = "post")]
+    async fn lock_hsm(&self) -> UnlockResult {
+        let mut provider = self.key_provider.lock().unwrap();
+        provider.lock();
+
+        UnlockResult::Ok(Json(UnlockResponse {
+            success: true,
+            message: "HSM locked (PIN cleared from memory)".to_string(),
+        }))
+    }
+
+    /// Check HSM lock status
+    #[oai(path = "/api/hsm/status", method = "get")]
+    async fn hsm_status(&self) -> LockStatusResult {
+        let provider = self.key_provider.lock().unwrap();
+
+        LockStatusResult::Ok(Json(LockStatusResponse {
+            locked: provider.is_locked(),
+            provider_type: provider.description(),
+        }))
+    }
+
     // ========================================================================
     // Public Key Queries
     // ========================================================================
@@ -233,8 +285,9 @@ impl UnifiedApi {
         tracing::info!("DKG Round 1 for passphrase (secp256k1)");
 
         // Generate round1 package with deterministic RNG
+        let provider = self.key_provider.lock().unwrap();
         match crate::node::derivation::dkg_part1_with_provider(
-            self.key_provider.as_ref(),
+            provider.as_ref(),
             &passphrase,
             self.config.node_index,
             self.config.max_signers,
@@ -545,10 +598,11 @@ impl UnifiedApi {
         // Serialize and encrypt nonces (bound to message)
         let message_bytes = hex::decode(&req.message).unwrap();
         let nonces_json = serde_json::to_vec(&nonces).unwrap();
+        let provider_guard = self.key_provider.lock().unwrap();
         let encrypted_nonces = match super::crypto::encrypt_nonces_with_provider(
             &nonces_json,
             &message_bytes,
-            self.key_provider.as_ref(),
+            provider_guard.as_ref(),
         ) {
             Ok(enc) => enc,
             Err(e) => {
@@ -584,10 +638,11 @@ impl UnifiedApi {
         };
 
         // Decrypt nonces
+        let provider_guard = self.key_provider.lock().unwrap();
         let nonces_json = match super::crypto::decrypt_nonces_with_provider(
             &req.encrypted_nonces,
             &message,
-            self.key_provider.as_ref(),
+            provider_guard.as_ref(),
         ) {
             Ok(json) => json,
             Err(e) => {
@@ -805,8 +860,9 @@ impl UnifiedApi {
         tracing::info!("DKG Round 1 for passphrase (secp256k1 ECDSA)");
 
         // Use same deterministic DKG as Taproot but with different seed prefix
+        let provider = self.key_provider.lock().unwrap();
         match crate::node::derivation::dkg_part1_ecdsa_with_provider(
-            self.key_provider.as_ref(),
+            provider.as_ref(),
             &passphrase,
             self.config.node_index,
             self.config.max_signers,
@@ -1100,8 +1156,9 @@ impl UnifiedApi {
         tracing::info!("DKG Round 1 for passphrase (Ed25519)");
 
         // Generate round1 package with deterministic RNG
+        let provider = self.key_provider.lock().unwrap();
         match crate::node::derivation::dkg_part1_ed25519_with_provider(
-            self.key_provider.as_ref(),
+            provider.as_ref(),
             &passphrase,
             self.config.node_index,
             self.config.max_signers,
@@ -1472,10 +1529,11 @@ impl UnifiedApi {
         // Encrypt nonces
         let message_bytes = hex::decode(&req.message).unwrap();
         let nonces_json = serde_json::to_vec(&nonces).unwrap();
+        let provider_guard = self.key_provider.lock().unwrap();
         let encrypted_nonces = match super::crypto::encrypt_nonces_with_provider(
             &nonces_json,
             &message_bytes,
-            self.key_provider.as_ref(),
+            provider_guard.as_ref(),
         ) {
             Ok(enc) => enc,
             Err(e) => {
@@ -1510,10 +1568,11 @@ impl UnifiedApi {
         };
 
         // Decrypt nonces
+        let provider_guard = self.key_provider.lock().unwrap();
         let nonces_json = match super::crypto::decrypt_nonces_with_provider(
             &req.encrypted_nonces,
             &message,
-            self.key_provider.as_ref(),
+            provider_guard.as_ref(),
         ) {
             Ok(json) => json,
             Err(e) => {
@@ -1815,10 +1874,11 @@ impl UnifiedApi {
         // Encrypt nonces
         let message_bytes = hex::decode(&req.message).unwrap();
         let nonces_json = serde_json::to_vec(&nonces).unwrap();
+        let provider_guard = self.key_provider.lock().unwrap();
         let encrypted_nonces = match super::crypto::encrypt_nonces_with_provider(
             &nonces_json,
             &message_bytes,
-            self.key_provider.as_ref(),
+            provider_guard.as_ref(),
         ) {
             Ok(enc) => enc,
             Err(e) => {
@@ -1853,10 +1913,11 @@ impl UnifiedApi {
         };
 
         // Decrypt nonces
+        let provider_guard = self.key_provider.lock().unwrap();
         let nonces_json = match super::crypto::decrypt_nonces_with_provider(
             &req.encrypted_nonces,
             &message,
-            self.key_provider.as_ref(),
+            provider_guard.as_ref(),
         ) {
             Ok(json) => json,
             Err(e) => {

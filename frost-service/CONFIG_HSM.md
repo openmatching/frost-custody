@@ -88,13 +88,57 @@ cargo run --release --features pkcs11
 | Key Control | ✅ 100% yours           | ⚠️ Split with provider |
 | Open Source | ✅ Yes                  | ❌ Closed              |
 
+## Unlock API (Recommended for Production)
+
+**Don't store PIN in config - unlock via API instead.**
+
+### Endpoints
+
+**POST /api/hsm/unlock** - Unlock with PIN
+```bash
+curl -X POST http://localhost:4000/api/hsm/unlock -d '{"pin": "123456"}'
+```
+
+**POST /api/hsm/lock** - Lock (clear PIN from memory)
+```bash
+curl -X POST http://localhost:4000/api/hsm/lock
+```
+
+**GET /api/hsm/status** - Check status
+```bash
+curl http://localhost:4000/api/hsm/status
+```
+
+### Security Benefit
+
+| PIN Location     | Machine Stolen                | Risk   |
+| ---------------- | ----------------------------- | ------ |
+| In config file   | Attacker reads file → has PIN | ❌ High |
+| **Via API only** | HSM locked → useless          | ✅ Low  |
+
+**Config:**
+```toml
+[node.key_provider]
+type = "pkcs11"
+pkcs11_library = "/usr/lib/libykcs11.so"
+# pin field omitted - unlock via API
+key_label = "frost-node-0"
+```
+
+See `config-pkcs11-nopin.toml.example` for complete example.
+
+---
+
 ## FAQ
 
 **Q: Works with any PKCS#11 device?**  
 A: Yes. Just change `pkcs11_library` path.
 
-**Q: Can I switch devices without code changes?**  
-A: Yes. Same code, different config.
+**Q: Should I store PIN in config?**  
+A: No (production). Use unlock API for security.
+
+**Q: What happens if HSM is locked?**  
+A: Operations fail with error. Call /api/hsm/unlock first.
 
 **Q: What curve does HSM use?**  
 A: P-256 (only for deriving randomness). FROST uses secp256k1/Ed25519 for blockchains.

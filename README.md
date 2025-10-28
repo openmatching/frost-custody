@@ -487,13 +487,25 @@ min_signers = 3         # m (minimum required to sign)
 type = "pkcs11"
 pkcs11_library = "/usr/lib/libykcs11.so"  # YubiKey, Thales, AWS CloudHSM, etc.
 slot = 0
-pin = "${HSM_PIN}"
+# pin = "${HSM_PIN}"  # Optional: omit for unlock via API (more secure)
 key_label = "frost-node-0"
+```
+
+**Unlock API (no PIN in config):**
+```bash
+# Start node (HSM locked)
+cargo run --release
+
+# Unlock via API
+curl -X POST http://localhost:4000/api/hsm/unlock -d '{"pin": "123456"}'
+
+# Check status
+curl http://localhost:4000/api/hsm/status
 ```
 
 Works with ANY PKCS#11 device. Test with SoftHSM: `cargo xtask test-dkg --hsm`
 
-See `config-pkcs11.toml.example` and `frost-service/CONFIG_HSM.md` for details.
+See `config-pkcs11.toml.example`, `config-pkcs11-nopin.toml.example`, and `frost-service/CONFIG_HSM.md`.
 
 ---
 

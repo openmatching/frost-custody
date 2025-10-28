@@ -506,8 +506,8 @@ fn test_dkg_hsm(no_build: bool) -> Result<()> {
     std::env::set_current_dir("..")?;
 
     // Wait for SoftHSM initialization
-    println!("⏳ Step 3: Waiting 15 seconds for SoftHSM initialization...");
-    sleep(Duration::from_secs(15));
+    println!("⏳ Step 3: Waiting 5 seconds for SoftHSM initialization...");
+    sleep(Duration::from_secs(5));
 
     // Verify SoftHSM
     println!("🔐 Step 4: Verifying SoftHSM tokens...");

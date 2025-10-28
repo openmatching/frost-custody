@@ -22,6 +22,26 @@ pub trait MasterKeyProvider: Send + Sync {
 
     /// Get a human-readable description of this provider
     fn description(&self) -> String;
+
+    /// Unlock HSM with PIN (for PKCS#11 providers)
+    ///
+    /// Returns Ok(true) if unlock successful or not needed
+    /// Returns Ok(false) if already unlocked
+    /// Returns Err if unlock failed
+    fn unlock(&mut self, pin: &str) -> Result<bool> {
+        let _ = pin; // Unused for plaintext
+        Ok(true) // Plaintext doesn't need unlocking
+    }
+
+    /// Check if HSM is locked
+    fn is_locked(&self) -> bool {
+        false // Plaintext is never locked
+    }
+
+    /// Lock the HSM (clear PIN from memory)
+    fn lock(&mut self) {
+        // Plaintext has nothing to lock
+    }
 }
 
 // ============================================================================
@@ -94,8 +114,9 @@ use cryptoki::{
 pub struct Pkcs11KeyProvider {
     pkcs11: Pkcs11,
     slot_id: cryptoki::slot::Slot,
-    pin: Option<String>,
+    pin: Option<String>, // Optional: can be provided at runtime via unlock API
     key_label: String,
+    locked: bool, // Track lock state
 }
 
 #[cfg(feature = "pkcs11")]
@@ -135,11 +156,14 @@ impl Pkcs11KeyProvider {
             .nth(slot_id)
             .context(format!("Slot {} not found", slot_id))?;
 
+        let locked = pin.is_none(); // If no PIN in config, start locked
+
         Ok(Self {
             pkcs11,
             slot_id: slot,
             pin,
             key_label,
+            locked,
         })
     }
 
@@ -176,6 +200,11 @@ impl Pkcs11KeyProvider {
 #[cfg(feature = "pkcs11")]
 impl MasterKeyProvider for Pkcs11KeyProvider {
     fn derive_rng(&self, passphrase: &str, curve_prefix: &str) -> Result<ChaCha20Rng> {
+        // Check if locked
+        if self.locked {
+            anyhow::bail!("HSM is locked. Call /api/unlock with PIN first.");
+        }
+
         // Open session
         let session = self
             .pkcs11
@@ -223,6 +252,44 @@ impl MasterKeyProvider for Pkcs11KeyProvider {
             self.slot_id.id(),
             self.key_label
         )
+    }
+
+    fn unlock(&mut self, pin: &str) -> Result<bool> {
+        if !self.locked {
+            return Ok(false); // Already unlocked
+        }
+
+        // Test PIN by trying to open a session and login
+        let session = self
+            .pkcs11
+            .open_ro_session(self.slot_id)
+            .context("Failed to open PKCS#11 session")?;
+
+        let auth_pin = AuthPin::new(pin.to_string());
+        session
+            .login(UserType::User, Some(&auth_pin))
+            .context("Failed to login - invalid PIN")?;
+
+        // PIN is valid, store it and unlock
+        self.pin = Some(pin.to_string());
+        self.locked = false;
+
+        // Logout and close test session
+        let _ = session.logout();
+        session.close();
+
+        tracing::info!("🔓 HSM unlocked successfully");
+        Ok(true)
+    }
+
+    fn is_locked(&self) -> bool {
+        self.locked
+    }
+
+    fn lock(&mut self) {
+        self.pin = None;
+        self.locked = true;
+        tracing::info!("🔒 HSM locked (PIN cleared from memory)");
     }
 }
 
