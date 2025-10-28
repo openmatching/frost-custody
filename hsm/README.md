@@ -82,24 +82,29 @@ For production HSM (YubiKey, Thales, AWS), see `../frost-service/CONFIG_HSM.md`.
 
 ## Key Persistence
 
-**SoftHSM keys persist in volumes** - reproducible testing by default.
+**SoftHSM keys persist in local directories** (gitignored) - reproducible testing by default.
 
 ```bash
 # Stop, KEEP keys (faster next run)
 docker-compose down
 cargo xtask test-dkg --hsm  # Reuses same keys
 
-# Stop, DELETE keys (fresh start)
-docker-compose down -v
+# Stop, DELETE keys (fresh start)  
+docker-compose down
+rm -rf softhsm data
 cargo xtask test-dkg --hsm  # Generates new keys
 ```
 
-**Why it matters:**
-- ✅ Same passphrase → same address (across test runs)
-- ✅ Faster startup (~2s vs ~15s)
-- ✅ Reproducible benchmarks
+**Directories created:**
+- `hsm/softhsm/node0-2/` - SoftHSM tokens (inspect with `ls -la softhsm/`)
+- `hsm/data/node0-2/` - FROST key shares
+- Both gitignored automatically
 
-**`cargo xtask test-dkg --hsm` keeps volumes by default.**
+**Benefits:**
+- ✅ Reproducible (same passphrase → same address)
+- ✅ Faster iterations (~2s vs ~15s)
+- ✅ Easy inspection (local files, not hidden in Docker volumes)
+- ✅ Simple cleanup (`rm -rf softhsm data`)
 
 ## Troubleshooting
 
