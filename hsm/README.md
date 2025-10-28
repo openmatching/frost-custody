@@ -40,6 +40,21 @@ hsm/
 
 **Each node:** Separate SoftHSM volume, isolated keys.
 
+**Key caching:** SoftHSM keys persist in Docker volumes for reproducible testing.
+- First run: Generates new keys (~15s init time)
+- Subsequent runs: Reuses existing keys (~instant startup)
+- Same keys = deterministic addresses (testing same passphrase gives same address)
+
+**Local directories (gitignored):**
+```
+hsm/softhsm/node0/  # SoftHSM tokens
+hsm/softhsm/node1/
+hsm/softhsm/node2/
+hsm/data/node0/     # FROST key shares
+hsm/data/node1/
+hsm/data/node2/
+```
+
 ## Performance
 
 | Mode           | Latency   | Overhead            |
@@ -65,18 +80,38 @@ key_label = "frost-node-0"
 
 For production HSM (YubiKey, Thales, AWS), see `../frost-service/CONFIG_HSM.md`.
 
+## Key Persistence
+
+**SoftHSM keys persist in volumes** - reproducible testing by default.
+
+```bash
+# Stop, KEEP keys (faster next run)
+docker-compose down
+cargo xtask test-dkg --hsm  # Reuses same keys
+
+# Stop, DELETE keys (fresh start)
+docker-compose down -v
+cargo xtask test-dkg --hsm  # Generates new keys
+```
+
+**Why it matters:**
+- ✅ Same passphrase → same address (across test runs)
+- ✅ Faster startup (~2s vs ~15s)
+- ✅ Reproducible benchmarks
+
+**`cargo xtask test-dkg --hsm` keeps volumes by default.**
+
 ## Troubleshooting
 
 ```bash
-# Check SoftHSM initialized
+# Check tokens
 docker exec frost-signer-node-0-softhsm softhsm2-util --show-slots
 
 # Check logs
 docker logs frost-signer-node-0-softhsm
 
-# Reset (destroys keys)
-docker-compose down -v
-docker-compose up
+# Reset if corrupted
+docker-compose down -v && docker-compose up
 ```
 
 ## Production

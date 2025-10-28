@@ -599,13 +599,15 @@ fn test_dkg_hsm(no_build: bool) -> Result<()> {
     println!("  ✅ SoftHSM overhead is acceptable!");
     println!();
 
-    // Cleanup
-    println!("🧹 Step 6: Cleaning up...");
+    // Cleanup (keep volumes for key caching - reproducible tests)
+    println!("🧹 Step 6: Cleaning up (keeping SoftHSM volumes for reproducibility)...");
     std::env::set_current_dir("hsm")?;
-    run_cmd("docker-compose", &["down", "-v"])?;
+    run_cmd("docker-compose", &["down"])?; // No -v flag: volumes persist
     std::env::set_current_dir("..")?;
 
     println!("\n✅ HSM test complete!");
+    println!("💡 Tip: SoftHSM keys cached in volumes - next run will be faster");
+    println!("   To reset keys: cd hsm && docker-compose down -v");
 
     Ok(())
 }

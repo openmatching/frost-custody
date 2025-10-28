@@ -19,8 +19,8 @@ services:
     entrypoint: ["docker-entrypoint.sh", "frost-service"]
     volumes:
       - ./node-00.toml:/etc/config.toml:ro
-      - frost-node0-softhsm:/var/lib/softhsm
-      - frost-node0-data:/data
+      - ./softhsm/node0:/var/lib/softhsm
+      - ./data/node0:/data
     environment:
       - USE_SOFTHSM=true
       - HSM_KEY_LABEL=frost-node-0
@@ -35,8 +35,8 @@ services:
     entrypoint: ["docker-entrypoint.sh", "frost-service"]
     volumes:
       - ./node-01.toml:/etc/config.toml:ro
-      - frost-node1-softhsm:/var/lib/softhsm
-      - frost-node1-data:/data
+      - ./softhsm/node1:/var/lib/softhsm
+      - ./data/node1:/data
     environment:
       - USE_SOFTHSM=true
       - HSM_KEY_LABEL=frost-node-1
@@ -51,8 +51,8 @@ services:
     entrypoint: ["docker-entrypoint.sh", "frost-service"]
     volumes:
       - ./node-02.toml:/etc/config.toml:ro
-      - frost-node2-softhsm:/var/lib/softhsm
-      - frost-node2-data:/data
+      - ./softhsm/node2:/var/lib/softhsm
+      - ./data/node2:/data
     environment:
       - USE_SOFTHSM=true
       - HSM_KEY_LABEL=frost-node-2
@@ -97,14 +97,6 @@ services:
       - frost-node0
       - frost-node1
       - frost-node2
-
-volumes:
-  frost-node0-softhsm:
-  frost-node1-softhsm:
-  frost-node2-softhsm:
-  frost-node0-data:
-  frost-node1-data:
-  frost-node2-data:
 
 networks:
   frost-internal:

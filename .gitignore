@@ -19,4 +19,7 @@ config.toml
 .DS_Store
 Thumbs.db
 
+# Data directories
 data/
+hsm/softhsm/
+hsm/data/
