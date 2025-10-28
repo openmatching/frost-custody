@@ -339,6 +339,13 @@ Setup: `frost-service/CONFIG_HSM.md` | Testing: `hsm/README.md`
 2. Passphrase entropy (high-entropy)
 3. Network isolation
 4. HSM-backed keys (PKCS#11)
+5. **Encrypted storage (AES-256-GCM at rest)**
+
+**Encrypted RocksDB:**
+- All key shares encrypted before storage
+- AES key derived from master key/HSM
+- Defense in depth (disk stolen = encrypted data)
+- Minimal HSM overhead (1 signature per passphrase)
 
 **Limitations:**
 - No key rotation (on-chain migration required)
@@ -347,4 +354,4 @@ Setup: `frost-service/CONFIG_HSM.md` | Testing: `hsm/README.md`
 **Flexibility:**
 - Any m-of-n (2-of-3 to 18-of-24+)
 - Any PKCS#11 device
-- Plaintext or hardware-backed keys
+- Encrypted storage always on (no performance penalty)
