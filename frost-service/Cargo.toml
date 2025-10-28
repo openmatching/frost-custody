@@ -16,7 +16,7 @@ path = "src/bin/keygen.rs"
 [dependencies]
 poem.workspace = true
 poem-openapi.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 serde.workspace = true
 toml.workspace = true
 anyhow.workspace = true
@@ -47,6 +47,7 @@ borsh = "1.5"
 
 # Additional crypto
 sha2 = "0.10"
+aes-gcm = "0.10"
 
 # PKCS#11 / HSM support (optional)
 cryptoki = { version = "0.6", optional = true }

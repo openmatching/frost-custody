@@ -514,7 +514,7 @@ fn test_dkg_hsm(no_build: bool) -> Result<()> {
     for i in 0..3 {
         print!("  Node {}: ", i);
         let output = Command::new("docker")
-            .args(&[
+            .args([
                 "exec",
                 &format!("frost-signer-node-{}-softhsm", i),
                 "softhsm2-util",
@@ -544,7 +544,7 @@ fn test_dkg_hsm(no_build: bool) -> Result<()> {
         let start = std::time::Instant::now();
 
         let output = Command::new("curl")
-            .args(&[
+            .args([
                 "-s",
                 "-X",
                 "POST",

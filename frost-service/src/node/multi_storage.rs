@@ -9,6 +9,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::path::Path;
 use std::sync::Arc;
 
+use super::key_provider::MasterKeyProvider;
 use crate::curves::{CurveOperations, CurveType};
 
 /// Column family names
@@ -56,12 +57,13 @@ impl MultiCurveStorage {
         }
     }
 
-    /// Store key package for passphrase
+    /// Store key package for passphrase (encrypted at rest)
     pub fn store_key_package<C: CurveOperations>(
         &self,
         curve_type: CurveType,
         passphrase: &str,
         key_package: &C::KeyPackage,
+        key_provider: &dyn MasterKeyProvider,
     ) -> Result<()>
     where
         C::KeyPackage: Serialize,
@@ -73,21 +75,29 @@ impl MultiCurveStorage {
             .ok_or_else(|| anyhow::anyhow!("Column family {} not found", cf_keys))?;
 
         let key = format!("keypackage:{}", passphrase);
-        let value = serde_json::to_vec(key_package).context("Failed to serialize key package")?;
+        let plaintext =
+            serde_json::to_vec(key_package).context("Failed to serialize key package")?;
+
+        // Encrypt with AES-256-GCM (defense in depth)
+        let ciphertext = key_provider.encrypt_storage(passphrase, &plaintext)?;
 
         self.db
-            .put_cf(&cf, key.as_bytes(), value)
-            .context("Failed to store key package")?;
+            .put_cf(&cf, key.as_bytes(), ciphertext)
+            .context("Failed to store encrypted key package")?;
 
-        tracing::debug!("Stored key package for passphrase in {:?}", curve_type);
+        tracing::debug!(
+            "Stored encrypted key package for passphrase in {:?}",
+            curve_type
+        );
         Ok(())
     }
 
-    /// Retrieve key package for passphrase
+    /// Retrieve key package for passphrase (decrypt from storage)
     pub fn get_key_package<C: CurveOperations>(
         &self,
         curve_type: CurveType,
         passphrase: &str,
+        key_provider: &dyn MasterKeyProvider,
     ) -> Result<Option<C::KeyPackage>>
     where
         C::KeyPackage: DeserializeOwned,
@@ -101,21 +111,24 @@ impl MultiCurveStorage {
         let key = format!("keypackage:{}", passphrase);
 
         match self.db.get_cf(&cf, key.as_bytes())? {
-            Some(value) => {
-                let key_package: C::KeyPackage =
-                    serde_json::from_slice(&value).context("Failed to deserialize key package")?;
+            Some(ciphertext) => {
+                // Decrypt with AES-256-GCM
+                let plaintext = key_provider.decrypt_storage(passphrase, &ciphertext)?;
+                let key_package: C::KeyPackage = serde_json::from_slice(&plaintext)
+                    .context("Failed to deserialize key package")?;
                 Ok(Some(key_package))
             }
             None => Ok(None),
         }
     }
 
-    /// Store public key package for passphrase
+    /// Store public key package for passphrase (encrypted at rest)
     pub fn store_pubkey_package<C: CurveOperations>(
         &self,
         curve_type: CurveType,
         passphrase: &str,
         pubkey_package: &C::PublicKeyPackage,
+        key_provider: &dyn MasterKeyProvider,
     ) -> Result<()>
     where
         C::PublicKeyPackage: Serialize,
@@ -127,21 +140,25 @@ impl MultiCurveStorage {
             .ok_or_else(|| anyhow::anyhow!("Column family {} not found", cf_pubkeys))?;
 
         let key = format!("pubkeypackage:{}", passphrase);
-        let value =
+        let plaintext =
             serde_json::to_vec(pubkey_package).context("Failed to serialize pubkey package")?;
 
+        // Encrypt with AES-256-GCM
+        let ciphertext = key_provider.encrypt_storage(passphrase, &plaintext)?;
+
         self.db
-            .put_cf(&cf, key.as_bytes(), value)
-            .context("Failed to store pubkey package")?;
+            .put_cf(&cf, key.as_bytes(), ciphertext)
+            .context("Failed to store encrypted pubkey package")?;
 
         Ok(())
     }
 
-    /// Retrieve public key package for passphrase
+    /// Retrieve public key package for passphrase (decrypt from storage)
     pub fn get_pubkey_package<C: CurveOperations>(
         &self,
         curve_type: CurveType,
         passphrase: &str,
+        key_provider: &dyn MasterKeyProvider,
     ) -> Result<Option<C::PublicKeyPackage>>
     where
         C::PublicKeyPackage: DeserializeOwned,
@@ -155,8 +172,10 @@ impl MultiCurveStorage {
         let key = format!("pubkeypackage:{}", passphrase);
 
         match self.db.get_cf(&cf, key.as_bytes())? {
-            Some(value) => {
-                let pubkey_package: C::PublicKeyPackage = serde_json::from_slice(&value)
+            Some(ciphertext) => {
+                // Decrypt with AES-256-GCM
+                let plaintext = key_provider.decrypt_storage(passphrase, &ciphertext)?;
+                let pubkey_package: C::PublicKeyPackage = serde_json::from_slice(&plaintext)
                     .context("Failed to deserialize pubkey package")?;
                 Ok(Some(pubkey_package))
             }
@@ -193,40 +212,58 @@ impl<C: CurveOperations> CurveStorage<C> {
         }
     }
 
-    pub fn store_key_package(&self, passphrase: &str, key_package: &C::KeyPackage) -> Result<()>
+    pub fn store_key_package(
+        &self,
+        passphrase: &str,
+        key_package: &C::KeyPackage,
+        key_provider: &dyn MasterKeyProvider,
+    ) -> Result<()>
     where
         C::KeyPackage: Serialize,
     {
         self.storage
-            .store_key_package::<C>(self.curve_type, passphrase, key_package)
+            .store_key_package::<C>(self.curve_type, passphrase, key_package, key_provider)
     }
 
-    pub fn get_key_package(&self, passphrase: &str) -> Result<Option<C::KeyPackage>>
+    pub fn get_key_package(
+        &self,
+        passphrase: &str,
+        key_provider: &dyn MasterKeyProvider,
+    ) -> Result<Option<C::KeyPackage>>
     where
         C::KeyPackage: DeserializeOwned,
     {
         self.storage
-            .get_key_package::<C>(self.curve_type, passphrase)
+            .get_key_package::<C>(self.curve_type, passphrase, key_provider)
     }
 
     pub fn store_pubkey_package(
         &self,
         passphrase: &str,
         pubkey_package: &C::PublicKeyPackage,
+        key_provider: &dyn MasterKeyProvider,
     ) -> Result<()>
     where
         C::PublicKeyPackage: Serialize,
     {
-        self.storage
-            .store_pubkey_package::<C>(self.curve_type, passphrase, pubkey_package)
+        self.storage.store_pubkey_package::<C>(
+            self.curve_type,
+            passphrase,
+            pubkey_package,
+            key_provider,
+        )
     }
 
-    pub fn get_pubkey_package(&self, passphrase: &str) -> Result<Option<C::PublicKeyPackage>>
+    pub fn get_pubkey_package(
+        &self,
+        passphrase: &str,
+        key_provider: &dyn MasterKeyProvider,
+    ) -> Result<Option<C::PublicKeyPackage>>
     where
         C::PublicKeyPackage: DeserializeOwned,
     {
         self.storage
-            .get_pubkey_package::<C>(self.curve_type, passphrase)
+            .get_pubkey_package::<C>(self.curve_type, passphrase, key_provider)
     }
 
     #[allow(dead_code)]

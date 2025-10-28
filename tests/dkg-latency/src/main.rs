@@ -270,14 +270,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    #[ignore] // Run explicitly with: cargo test --test dkg_latency_test -- --ignored --nocapture
-    async fn test_24_node_bitcoin_dkg() {
-        main().await.expect("DKG latency test failed");
-    }
-}

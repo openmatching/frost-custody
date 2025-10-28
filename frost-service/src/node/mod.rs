@@ -48,7 +48,7 @@ pub async fn run(
         config: Arc::new(node_config.clone()),
         storage: multi_storage,
         dkg_state,
-        key_provider: Arc::new(std::sync::Mutex::new(key_provider)),
+        key_provider: Arc::from(key_provider),
     };
 
     // Single unified API service

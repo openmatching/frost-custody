@@ -1,3 +1,10 @@
+#[cfg(feature = "pkcs11")]
+use std::sync::{Arc, RwLock};
+
+use aes_gcm::{
+    aead::{Aead, KeyInit},
+    Aes256Gcm, Nonce,
+};
 use anyhow::{Context, Result};
 use bitcoin::hashes::{sha256, Hash};
 use rand::SeedableRng;
@@ -25,10 +32,10 @@ pub trait MasterKeyProvider: Send + Sync {
 
     /// Unlock HSM with PIN (for PKCS#11 providers)
     ///
-    /// Returns Ok(true) if unlock successful or not needed
+    /// Returns Ok(true) if unlock successful
     /// Returns Ok(false) if already unlocked
     /// Returns Err if unlock failed
-    fn unlock(&mut self, pin: &str) -> Result<bool> {
+    fn unlock(&self, pin: &str) -> Result<bool> {
         let _ = pin; // Unused for plaintext
         Ok(true) // Plaintext doesn't need unlocking
     }
@@ -39,8 +46,58 @@ pub trait MasterKeyProvider: Send + Sync {
     }
 
     /// Lock the HSM (clear PIN from memory)
-    fn lock(&mut self) {
+    fn lock(&self) {
         // Plaintext has nothing to lock
+    }
+
+    /// Derive encryption key for RocksDB storage
+    ///
+    /// This is used to encrypt key shares before storing in RocksDB.
+    /// - Plaintext: Derives from master seed + passphrase
+    /// - HSM: Signs passphrase with HSM key (minimal HSM load)
+    fn derive_storage_key(&self, passphrase: &str) -> Result<[u8; 32]> {
+        // Derive deterministic key for this passphrase
+        let mut rng = self.derive_rng(passphrase, "storage-encryption")?;
+        let mut key = [0u8; 32];
+        use rand::RngCore;
+        rng.fill_bytes(&mut key);
+        Ok(key)
+    }
+
+    /// Encrypt data for storage (AES-256-GCM)
+    fn encrypt_storage(&self, passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>> {
+        let key = self.derive_storage_key(passphrase)?;
+        let cipher = Aes256Gcm::new(&key.into());
+
+        // Derive deterministic nonce from passphrase (96 bits)
+        let nonce_hash = sha256::Hash::hash(format!("nonce:{}", passphrase).as_bytes());
+        let mut nonce_arr: [u8; 12] = [0; 12];
+        nonce_arr.copy_from_slice(&nonce_hash.as_byte_array()[..12]);
+        let nonce: Nonce<U12> = Nonce::from(nonce_arr);
+
+        let ciphertext = cipher
+            .encrypt(&nonce, plaintext)
+            .map_err(|e| anyhow::anyhow!("Encryption failed: {:?}", e))?;
+
+        Ok(ciphertext)
+    }
+
+    /// Decrypt data from storage (AES-256-GCM)
+    fn decrypt_storage(&self, passphrase: &str, ciphertext: &[u8]) -> Result<Vec<u8>> {
+        let key = self.derive_storage_key(passphrase)?;
+        let cipher = Aes256Gcm::new(&key.into());
+
+        // Same deterministic nonce
+        let nonce_hash = sha256::Hash::hash(format!("nonce:{}", passphrase).as_bytes());
+        let mut nonce_arr: [u8; 12] = [0; 12];
+        nonce_arr.copy_from_slice(&nonce_hash.as_byte_array()[..12]);
+        let nonce: Nonce<U12> = Nonce::from(nonce_arr);
+
+        let plaintext = cipher
+            .decrypt(&nonce, ciphertext)
+            .map_err(|e| anyhow::anyhow!("Decryption failed: {:?}", e))?;
+
+        Ok(plaintext)
     }
 }
 
@@ -109,14 +166,14 @@ use cryptoki::{
     session::{Session, UserType},
     types::AuthPin,
 };
+use sha2::digest::consts::U12;
 
 #[cfg(feature = "pkcs11")]
 pub struct Pkcs11KeyProvider {
     pkcs11: Pkcs11,
     slot_id: cryptoki::slot::Slot,
-    pin: Option<String>, // Optional: can be provided at runtime via unlock API
+    pin: Arc<RwLock<Option<String>>>, // Interior mutability
     key_label: String,
-    locked: bool, // Track lock state
 }
 
 #[cfg(feature = "pkcs11")]
@@ -156,14 +213,11 @@ impl Pkcs11KeyProvider {
             .nth(slot_id)
             .context(format!("Slot {} not found", slot_id))?;
 
-        let locked = pin.is_none(); // If no PIN in config, start locked
-
         Ok(Self {
             pkcs11,
             slot_id: slot,
-            pin,
+            pin: Arc::new(RwLock::new(pin)),
             key_label,
-            locked,
         })
     }
 
@@ -200,10 +254,16 @@ impl Pkcs11KeyProvider {
 #[cfg(feature = "pkcs11")]
 impl MasterKeyProvider for Pkcs11KeyProvider {
     fn derive_rng(&self, passphrase: &str, curve_prefix: &str) -> Result<ChaCha20Rng> {
+        // Read PIN (blocking read is OK for short critical sections)
+        let pin_guard = self
+            .pin
+            .read()
+            .map_err(|e| anyhow::anyhow!("Failed to read PIN: {:?}", e))?;
+
         // Check if locked
-        if self.locked {
-            anyhow::bail!("HSM is locked. Call /api/unlock with PIN first.");
-        }
+        let pin_str = pin_guard.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("HSM is locked. Call /api/hsm/unlock with PIN first.")
+        })?;
 
         // Open session
         let session = self
@@ -211,13 +271,11 @@ impl MasterKeyProvider for Pkcs11KeyProvider {
             .open_ro_session(self.slot_id)
             .context("Failed to open PKCS#11 session")?;
 
-        // Login if PIN provided
-        if let Some(pin) = &self.pin {
-            let auth_pin = AuthPin::new(pin.clone());
-            session
-                .login(UserType::User, Some(&auth_pin))
-                .context("Failed to login to PKCS#11 token")?;
-        }
+        // Login with PIN
+        let auth_pin = AuthPin::new(pin_str.clone());
+        session
+            .login(UserType::User, Some(&auth_pin))
+            .context("Failed to login to PKCS#11 token")?;
 
         // Find the key
         let key_handle = self.find_key(&session)?;
@@ -254,10 +312,17 @@ impl MasterKeyProvider for Pkcs11KeyProvider {
         )
     }
 
-    fn unlock(&mut self, pin: &str) -> Result<bool> {
-        if !self.locked {
+    fn unlock(&self, pin: &str) -> Result<bool> {
+        // Read current state
+        let pin_guard = self
+            .pin
+            .read()
+            .map_err(|e| anyhow::anyhow!("Failed to read PIN: {:?}", e))?;
+        if pin_guard.is_some() {
+            drop(pin_guard);
             return Ok(false); // Already unlocked
         }
+        drop(pin_guard);
 
         // Test PIN by trying to open a session and login
         let session = self
@@ -270,9 +335,13 @@ impl MasterKeyProvider for Pkcs11KeyProvider {
             .login(UserType::User, Some(&auth_pin))
             .context("Failed to login - invalid PIN")?;
 
-        // PIN is valid, store it and unlock
-        self.pin = Some(pin.to_string());
-        self.locked = false;
+        // PIN is valid, store it
+        let mut pin_guard = self
+            .pin
+            .write()
+            .map_err(|e| anyhow::anyhow!("Failed to write PIN: {:?}", e))?;
+        *pin_guard = Some(pin.to_string());
+        drop(pin_guard);
 
         // Logout and close test session
         let _ = session.logout();
@@ -283,12 +352,13 @@ impl MasterKeyProvider for Pkcs11KeyProvider {
     }
 
     fn is_locked(&self) -> bool {
-        self.locked
+        self.pin.read().expect("Failed to read PIN").is_none()
     }
 
-    fn lock(&mut self) {
-        self.pin = None;
-        self.locked = true;
+    fn lock(&self) {
+        let mut pin_guard = self.pin.write().expect("Failed to write PIN");
+        *pin_guard = None;
+        drop(pin_guard);
         tracing::info!("🔒 HSM locked (PIN cleared from memory)");
     }
 }
@@ -313,7 +383,7 @@ pub enum KeyProviderConfig {
 }
 
 impl KeyProviderConfig {
-    pub fn create_provider(&self) -> Result<Box<dyn MasterKeyProvider>> {
+    pub fn create_provider(&self) -> Result<Box<dyn MasterKeyProvider + 'static>> {
         match self {
             KeyProviderConfig::Plaintext { master_seed_hex } => {
                 let provider = PlaintextKeyProvider::from_hex(master_seed_hex)?;
