@@ -224,31 +224,30 @@ impl MasterKeyProvider for Pkcs11KeyProvider {
             .login(UserType::User, Some(&auth_pin))
             .context("Failed to login to PKCS#11 token")?;
 
-        // Find the HMAC key
-        let key_handle = self.find_key(&session)?;
+        // Find the AES key
+        let aes_key = self.find_key(&session)?;
 
-        // Prepare message for HMAC: curve_prefix:passphrase
-        let mut message = Vec::new();
+        // Prepare input: hash(curve_prefix:passphrase) to get exactly 32 bytes for AES
+        let mut input_data = Vec::new();
         if !curve_prefix.is_empty() {
-            message.extend_from_slice(curve_prefix.as_bytes());
-            message.extend_from_slice(b":");
+            input_data.extend_from_slice(curve_prefix.as_bytes());
+            input_data.extend_from_slice(b":");
         }
-        message.extend_from_slice(passphrase.as_bytes());
+        input_data.extend_from_slice(passphrase.as_bytes());
+        let input_hash = sha256::Hash::hash(&input_data);
 
-        // Compute HMAC-SHA256 with HSM key (DETERMINISTIC and SECURE)
-        // Same key + same message → ALWAYS same HMAC output
-        // Attacker CANNOT compute this without HSM access
+        // Encrypt with AES-256-ECB using HSM (DETERMINISTIC and SECURE)
+        // AES-ECB is deterministic: same key + same plaintext = same ciphertext
+        // This is SAFE for key derivation (not bulk encryption)
+        // Attacker CANNOT compute this without HSM AES key
+        let mechanism = Mechanism::AesEcb;
+        let ciphertext = session
+            .encrypt(&mechanism, aes_key, input_hash.as_byte_array())
+            .context("Failed to AES-encrypt with HSM key")?;
 
-        // Use generic signing mechanism - HMAC is a "signature" operation in PKCS#11
-        // The key type (AES) + mechanism determines it's HMAC
-        let mechanism = Mechanism::Sha256; // When used with AES key, this becomes HMAC-SHA256
-        let hmac_output = session
-            .sign(&mechanism, key_handle, &message)
-            .context("Failed to compute HMAC with HSM key")?;
-
-        // Use HMAC output directly as RNG seed (already 32 bytes for SHA256)
+        // Use ciphertext as RNG seed (deterministic and secure)
         let mut rng_seed = [0u8; 32];
-        rng_seed.copy_from_slice(&hmac_output[..32]);
+        rng_seed.copy_from_slice(&ciphertext[..32]);
 
         // Logout and close session
         let _ = session.logout(); // Ignore errors on logout

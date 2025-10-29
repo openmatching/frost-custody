@@ -96,6 +96,7 @@ pkcs11-tool --module "$PKCS11_LIB" \
     --login --pin "$PIN" \
     --keygen \
     --key-type AES:32 \
+    --usage-sign \
     --label "$KEY_LABEL" \
     --id 01
 

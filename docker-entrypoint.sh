@@ -26,6 +26,7 @@ if [[ "$@" == *"frost-service"* ]] && [ -d "/var/lib/softhsm/tokens" ]; then
         pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so \
             --login --pin "$PIN" \
             --keygen --key-type AES:32 \
+            --usage-sign \
             --label "$KEY_LABEL" \
             --id 01 2>&1 | grep -E "(Using slot|Key generated)" || true
         
