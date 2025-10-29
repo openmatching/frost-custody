@@ -6,24 +6,38 @@ Supporting Bitcoin, Ethereum, and Solana with flexible **m-of-n** threshold sign
 
 ## Quick Start
 
+### Prerequisites
+
 ```bash
-# Build and start FROST services
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# Install SoftHSM (for development)
+sudo apt-get install softhsm2 opensc  # Ubuntu/Debian
+brew install softhsm                   # macOS
+```
+
+### Setup (3 Steps)
+
+```bash
+# 1. Initialize HSM for 3 nodes (2-of-3 threshold)
+./scripts/init-softhsm.sh node0
+./scripts/init-softhsm.sh node1
+./scripts/init-softhsm.sh node2
+
+# 2. Build and start services
 cargo xtask build
 cargo xtask up frost
 
-# Generate addresses
+# 3. Generate address
 curl -X POST http://localhost:9000/api/address/generate \
   -H "Content-Type: application/json" \
   -d '{"chain": "bitcoin", "passphrase": "user-wallet-001"}'
 
 # Returns: {"address": "bc1p...", "public_key": "03...", "curve": "secp256k1-tr"}
-
-# View logs
-cargo xtask logs --follow
-
-# Stop services
-cargo xtask down
 ```
+
+**For detailed setup guide, see configuration section below.**
 
 ## Running Examples
 
@@ -182,20 +196,19 @@ curl http://localhost:8000/docs  # Signing aggregator
 
 ## Command Reference
 
-| Task                  | Command                       |
-| --------------------- | ----------------------------- |
-| See all commands      | `cargo xtask --help`          |
-| Build images          | `cargo xtask build`           |
-| Start FROST           | `cargo xtask up frost`        |
-| Start FROST (SoftHSM) | `cd hsm && docker-compose up` |
-| Start all services    | `cargo xtask up all`          |
-| View logs             | `cargo xtask logs --follow`   |
-| Run tests             | `cargo xtask test`            |
-| Run clippy            | `cargo xtask clippy`          |
-| Generate test configs | `cargo xtask gen-configs`     |
-| DKG latency test      | `cargo xtask test-dkg`        |
-| Stop services         | `cargo xtask down`            |
-| Complete cleanup      | `cargo xtask clean`           |
+| Task                  | Command                     |
+| --------------------- | --------------------------- |
+| See all commands      | `cargo xtask --help`        |
+| Build images          | `cargo xtask build`         |
+| Start FROST           | `cargo xtask up frost`      |
+| Start all services    | `cargo xtask up all`        |
+| View logs             | `cargo xtask logs --follow` |
+| Run tests             | `cargo xtask test`          |
+| Run clippy            | `cargo xtask clippy`        |
+| Generate test configs | `cargo xtask gen-configs`   |
+| DKG latency test      | `cargo xtask test-dkg`      |
+| Stop services         | `cargo xtask down`          |
+| Complete cleanup      | `cargo xtask clean`         |
 
 ---
 
@@ -374,7 +387,7 @@ make logs-frost
 ### Key Management
 
 **Backup:**
-- Master seeds (one per signer node) - can be plaintext or hardware-backed
+- HSM keys (one per signer node) - stored in PKCS#11 HSM
 - List of passphrases (from your database)
 
 **Recovery:**
@@ -384,9 +397,9 @@ make logs-frost
 **Hardware Security:**
 - PKCS#11 support (enabled by default)
 - Works with YubiKey ($55), Thales HSM, AWS CloudHSM, or any PKCS#11 device
-- Master key never in plaintext
-- Test with: `cargo xtask test-dkg --hsm` (SoftHSM)
-- Setup: [CONFIG_HSM.md](frost-service/CONFIG_HSM.md)
+- HSM keys never leave the hardware
+- Test with: `cargo xtask test-dkg` (uses SoftHSM automatically)
+- Setup: Run `./scripts/init-softhsm.sh node0`
 
 **See [SECURITY.md](SECURITY.md) and [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) for deployment guide.**
 
@@ -469,10 +482,16 @@ port = 4000
 
 [node]
 index = 0
-master_seed_hex = "..."  # OR use hardware HSM (see below)
 storage_path = "./data/node0"
 max_signers = 5         # n (total number of signers)
 min_signers = 3         # m (minimum required to sign)
+
+# PKCS#11 HSM Configuration (mandatory)
+[node.key_provider]
+pkcs11_library = "/usr/lib/softhsm/libsofthsm2.so"  # SoftHSM for dev, change for prod
+slot = 0
+pin = "${HSM_PIN}"      # Read from environment variable
+key_label = "frost-master-key-node0"
 ```
 
 **Threshold Configuration:**
@@ -480,32 +499,28 @@ min_signers = 3         # m (minimum required to sign)
 - `min_signers` = m (minimum required for signing)
 - Examples: 2-of-3, 3-of-5, 5-of-7, or any m-of-n
 
-**Hardware Security (PKCS#11 - enabled by default):**
+**HSM Key Storage (PKCS#11):**
 
-```toml
-[node.key_provider]
-type = "pkcs11"
-pkcs11_library = "/usr/lib/libykcs11.so"  # YubiKey, Thales, AWS CloudHSM, etc.
-slot = 0
-# pin = "${HSM_PIN}"  # Optional: omit for unlock via API (more secure)
-key_label = "frost-node-0"
+All FROST nodes require PKCS#11 HSM for secure key storage:
+- **Development**: SoftHSM (free, software-based)
+- **Production**: YubiKey ($50), AWS CloudHSM ($1K/month), Thales Luna ($5K+)
+
+**Setup SoftHSM:**
+```bash
+# Initialize HSM token and generate key
+./scripts/init-softhsm.sh node0
+
+# Start service
+cargo run --bin frost-service -- config-node0.toml
 ```
 
-**Unlock API (no PIN in config):**
+**Unlock API (if PIN not in config):**
 ```bash
-# Start node (HSM locked)
-cargo run --release
-
-# Unlock via API
 curl -X POST http://localhost:4000/api/hsm/unlock -d '{"pin": "123456"}'
-
-# Check status
 curl http://localhost:4000/api/hsm/status
 ```
 
-Works with ANY PKCS#11 device. Test with SoftHSM: `cargo xtask test-dkg --hsm`
-
-See `config-pkcs11.toml.example`, `config-pkcs11-nopin.toml.example`, and `frost-service/CONFIG_HSM.md`.
+See `config-node.toml.example` for full annotated configuration.
 
 ---
 
@@ -555,7 +570,7 @@ Chain::Cosmos => {
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture
 - **[SECURITY.md](SECURITY.md)** - Security model and passphrase best practices
 - **[SYSTEM_DESIGN.md](SYSTEM_DESIGN.md)** - Deployment, threat model, and HSM options
-- **[frost-service/CONFIG_HSM.md](frost-service/CONFIG_HSM.md)** - PKCS#11 setup (YubiKey, Thales, AWS)
+- **[config-node.toml.example](config-node.toml.example)** - Node configuration with HSM setup
 
 ---
 
@@ -602,7 +617,7 @@ A: **Yes!** All EVM chains use ECDSA like Ethereum. Just add chain enum and chan
 
 **Q: How do I recover keys?**
 
-A: Keep 3 master seeds + list of passphrases. Re-run DKG for each passphrase (deterministic).
+A: Keep 3 HSM backups + list of passphrases. Re-run DKG for each passphrase (deterministic).
 
 **Q: Is this production-ready?**
 

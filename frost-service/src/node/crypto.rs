@@ -1,6 +1,6 @@
+use super::key_provider::MasterKeyProvider;
 use anyhow::{Context, Result};
 use bitcoin::hashes::{sha256, Hash};
-use super::key_provider::MasterKeyProvider;
 use rand::RngCore;
 
 /// Encrypt nonces with deterministic key for secure server-side storage

@@ -38,16 +38,22 @@ services:
       - signer-net
 
   # FROST Signer Nodes (ports 4000-4002, internal only)
+  # All nodes use SoftHSM for PKCS#11 key storage
   frost-node0:
     image: frost-mpc:latest
     container_name: frost-signer-node-0
     entrypoint: ["frost-service"]
     volumes:
       - ./frost-config-node0.toml:/etc/config.toml:ro
+      - frost-softhsm-node0:/var/lib/softhsm/tokens # SoftHSM token storage
+      - frost-data-node0:/data # FROST key shares
+    environment:
+      - RUST_LOG=info
     networks:
       - frost-internal
     # No external ports - only aggregator can reach
     # role = "node" in config
+    # Unlock HSM via API: curl -X POST http://frost-node0:4000/api/hsm/unlock -d '{"pin":"123456"}'
 
   frost-node1:
     image: frost-mpc:latest
@@ -55,6 +61,10 @@ services:
     entrypoint: ["frost-service"]
     volumes:
       - ./frost-config-node1.toml:/etc/config.toml:ro
+      - frost-softhsm-node1:/var/lib/softhsm/tokens
+      - frost-data-node1:/data
+    environment:
+      - RUST_LOG=info
     networks:
       - frost-internal
 
@@ -64,6 +74,10 @@ services:
     entrypoint: ["frost-service"]
     volumes:
       - ./frost-config-node2.toml:/etc/config.toml:ro
+      - frost-softhsm-node2:/var/lib/softhsm/tokens
+      - frost-data-node2:/data
+    environment:
+      - RUST_LOG=info
     networks:
       - frost-internal
 
@@ -114,8 +128,47 @@ networks:
   cex-network:
     driver: bridge
     # CEX backend connects here
+
+volumes:
+  # SoftHSM token storage (persistent, contains HSM keys)
+  frost-softhsm-node0:
+  frost-softhsm-node1:
+  frost-softhsm-node2:
+  # FROST key shares storage
+  frost-data-node0:
+  frost-data-node1:
+  frost-data-node2:
+# ============================================================================
 # FROST MPC - Multi-Party Computation threshold signing system
-# Profiles for different deployment scenarios:
-#   docker-compose up multisig-node0 multisig-node1 multisig-node2  # Traditional multisig only
-#   docker-compose up frost-node0 frost-node1 frost-node2 frost-aggregator  # FROST only
-#   docker-compose up  # All services
+# ============================================================================
+#
+# Architecture:
+#   - 3 FROST signer nodes (internal network, HSM-backed)
+#   - 1 Address aggregator (low-risk, CEX-facing)
+#   - 1 Signing aggregator (high-risk, restricted access)
+#   - 3 Traditional multisig nodes (legacy support)
+#
+# SoftHSM Setup:
+#   Before first run, initialize HSM tokens:
+#   1. ./scripts/init-softhsm.sh node0
+#   2. ./scripts/init-softhsm.sh node1
+#   3. ./scripts/init-softhsm.sh node2
+#
+#   Or let containers auto-initialize (slower first startup)
+#
+# Deployment profiles:
+#   docker-compose up multisig-node0 multisig-node1 multisig-node2
+#     → Traditional multisig only
+#
+#   docker-compose up frost-node0 frost-node1 frost-node2 address-aggregator signing-aggregator
+#     → FROST MPC cluster
+#
+#   docker-compose up
+#     → All services
+#
+# Security:
+#   - FROST nodes: No external ports, HSM-backed keys
+#   - Address aggregator: Port 9000 (safe to expose to CEX)
+#   - Signing aggregator: Port 8000 (HIGH RISK - firewall required!)
+#
+# For production HSM (YubiKey, CloudHSM), see MIGRATION.md

@@ -50,14 +50,14 @@ Total: 256-bit keyspace
 
 **Algorithm:**
 ```
-Node i: rng = ChaCha20(sha256(master_seed_i + passphrase))
+Node i: rng = ChaCha20(sha256(HSM_sign(passphrase)))
 Run DKG with deterministic RNG
 Result: Unique FROST shares per passphrase
 ```
 
 **Benefits:**
 - ✅ Per-user Taproot addresses
-- ✅ Recoverable from master seeds
+- ✅ Recoverable from HSM keys
 - ✅ Real threshold security
 
 ---
@@ -83,7 +83,7 @@ Recovery: Restore mnemonics → derive all addresses
 ### FROST DKG
 ```
 Backup:
-  - 3 master seeds (mnemonics)
+  - 3 HSM key backups
   - List of passphrases (CEX database)
 
 Recovery:

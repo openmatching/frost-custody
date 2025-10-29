@@ -23,16 +23,29 @@ RUN --mount=type=cache,target=/app/target \
 
 FROM debian:bullseye-slim
 
-# Install minimal runtime dependencies (NO SoftHSM - keeps image small)
+# Install runtime dependencies including SoftHSM2 (PKCS#11 provider)
+# SoftHSM is mandatory for FROST nodes - provides hardware-backed key storage
+# Compatible with YubiKey, enterprise HSM, and cloud HSM for production
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    softhsm2 \
+    opensc \
     && rm -rf /var/lib/apt/lists/*
+
+# Create SoftHSM directories
+RUN mkdir -p /var/lib/softhsm/tokens && \
+    chmod 755 /var/lib/softhsm/tokens
 
 # Copy all binaries
 COPY --from=builder /usr/local/bin/multisig-signer /usr/local/bin/
 COPY --from=builder /usr/local/bin/frost-service /usr/local/bin/
 
+# Copy entrypoint script for SoftHSM auto-initialization
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 ENV CONFIG_PATH=/etc/config.toml
 
-# Default entrypoint (can be overridden)
-ENTRYPOINT ["multisig-signer"]
+# Use entrypoint script for auto-initialization
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["multisig-signer"]

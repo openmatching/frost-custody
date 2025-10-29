@@ -49,12 +49,8 @@ borsh = "1.5"
 sha2 = "0.10"
 aes-gcm = "0.10"
 
-# PKCS#11 / HSM support (optional)
-cryptoki = { version = "0.6", optional = true }
-
-[features]
-default = ["pkcs11"]  # HSM support enabled by default (production-ready)
-pkcs11 = ["cryptoki"]
+# PKCS#11 / HSM support (mandatory - works with SoftHSM, YubiKey, or enterprise HSM)
+cryptoki = "0.6"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

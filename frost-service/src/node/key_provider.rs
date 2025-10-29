@@ -1,4 +1,3 @@
-#[cfg(feature = "pkcs11")]
 use std::sync::{Arc, RwLock};
 
 use aes_gcm::{
@@ -10,17 +9,31 @@ use bitcoin::hashes::{sha256, Hash};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
-/// Trait for providing deterministic RNG from master key material
+/// Trait for providing deterministic RNG from HSM-backed key via PKCS#11
 ///
-/// This abstraction allows different backends:
-/// - Plaintext seed (simple, for development)
-/// - PKCS#11 (industry standard, works with ANY HSM/token)
+/// PKCS#11 is the industry standard API for HSMs and crypto tokens.
+/// This abstraction works with ANY PKCS#11-compliant device:
 ///
-/// PKCS#11 is vendor-agnostic - works with:
-/// - USB tokens: YubiKey, Nitrokey, OnlyKey
-/// - Enterprise HSM: Thales, Utimaco, Gemalto
-/// - Cloud HSM: AWS CloudHSM, Azure Key Vault
-/// - Testing: SoftHSM
+/// **Development/Testing:**
+/// - SoftHSM (free, software-based)
+///
+/// **USB Security Keys:**
+/// - YubiKey 5 Series
+/// - Nitrokey HSM
+/// - OnlyKey
+///
+/// **Enterprise HSMs:**
+/// - Thales Luna
+/// - Utimaco SecurityServer
+/// - Gemalto SafeNet
+///
+/// **Cloud HSMs:**
+/// - AWS CloudHSM
+/// - Azure Key Vault with HSM
+/// - Google Cloud HSM
+///
+/// Just change the `pkcs11_library` path in config to switch devices.
+/// No code changes needed - same interface for all providers.
 pub trait MasterKeyProvider: Send + Sync {
     /// Derive deterministic RNG for a given passphrase
     ///
@@ -30,31 +43,23 @@ pub trait MasterKeyProvider: Send + Sync {
     /// Get a human-readable description of this provider
     fn description(&self) -> String;
 
-    /// Unlock HSM with PIN (for PKCS#11 providers)
+    /// Unlock HSM with PIN
     ///
     /// Returns Ok(true) if unlock successful
     /// Returns Ok(false) if already unlocked
     /// Returns Err if unlock failed
-    fn unlock(&self, pin: &str) -> Result<bool> {
-        let _ = pin; // Unused for plaintext
-        Ok(true) // Plaintext doesn't need unlocking
-    }
+    fn unlock(&self, pin: &str) -> Result<bool>;
 
     /// Check if HSM is locked
-    fn is_locked(&self) -> bool {
-        false // Plaintext is never locked
-    }
+    fn is_locked(&self) -> bool;
 
     /// Lock the HSM (clear PIN from memory)
-    fn lock(&self) {
-        // Plaintext has nothing to lock
-    }
+    fn lock(&self);
 
     /// Derive encryption key for RocksDB storage
     ///
     /// This is used to encrypt key shares before storing in RocksDB.
-    /// - Plaintext: Derives from master seed + passphrase
-    /// - HSM: Signs passphrase with HSM key (minimal HSM load)
+    /// HSM signs passphrase to create deterministic encryption key.
     fn derive_storage_key(&self, passphrase: &str) -> Result<[u8; 32]> {
         // Derive deterministic key for this passphrase
         let mut rng = self.derive_rng(passphrase, "storage-encryption")?;
@@ -102,48 +107,6 @@ pub trait MasterKeyProvider: Send + Sync {
 }
 
 // ============================================================================
-// Plaintext Implementation (current, default)
-// ============================================================================
-
-pub struct PlaintextKeyProvider {
-    master_seed: Vec<u8>,
-}
-
-impl PlaintextKeyProvider {
-    pub fn new(master_seed: Vec<u8>) -> Self {
-        Self { master_seed }
-    }
-
-    pub fn from_hex(hex_seed: &str) -> Result<Self> {
-        let seed = hex::decode(hex_seed).context("Failed to decode master seed hex")?;
-        Ok(Self::new(seed))
-    }
-}
-
-impl MasterKeyProvider for PlaintextKeyProvider {
-    fn derive_rng(&self, passphrase: &str, curve_prefix: &str) -> Result<ChaCha20Rng> {
-        let mut seed_material = self.master_seed.clone();
-        if !curve_prefix.is_empty() {
-            seed_material.extend_from_slice(curve_prefix.as_bytes());
-            seed_material.extend_from_slice(b":");
-        }
-        seed_material.extend_from_slice(passphrase.as_bytes());
-
-        let seed_hash = sha256::Hash::hash(&seed_material);
-        let seed: [u8; 32] = *seed_hash.as_byte_array();
-
-        Ok(ChaCha20Rng::from_seed(seed))
-    }
-
-    fn description(&self) -> String {
-        format!(
-            "Plaintext seed ({}...)",
-            hex::encode(&self.master_seed[..4])
-        )
-    }
-}
-
-// ============================================================================
 // PKCS#11 / HSM Implementation (Industry Standard, Vendor-Agnostic)
 // ============================================================================
 //
@@ -158,7 +121,6 @@ impl MasterKeyProvider for PlaintextKeyProvider {
 // No code changes needed.
 // ============================================================================
 
-#[cfg(feature = "pkcs11")]
 use cryptoki::{
     context::{CInitializeArgs, Pkcs11},
     mechanism::Mechanism,
@@ -168,7 +130,6 @@ use cryptoki::{
 };
 use sha2::digest::consts::U12;
 
-#[cfg(feature = "pkcs11")]
 pub struct Pkcs11KeyProvider {
     pkcs11: Pkcs11,
     slot_id: cryptoki::slot::Slot,
@@ -176,7 +137,6 @@ pub struct Pkcs11KeyProvider {
     key_label: String,
 }
 
-#[cfg(feature = "pkcs11")]
 impl Pkcs11KeyProvider {
     /// Create new PKCS#11 key provider
     ///
@@ -251,7 +211,6 @@ impl Pkcs11KeyProvider {
     }
 }
 
-#[cfg(feature = "pkcs11")]
 impl MasterKeyProvider for Pkcs11KeyProvider {
     fn derive_rng(&self, passphrase: &str, curve_prefix: &str) -> Result<ChaCha20Rng> {
         // Read PIN (blocking read is OK for short critical sections)
@@ -368,94 +327,29 @@ impl MasterKeyProvider for Pkcs11KeyProvider {
 // ============================================================================
 
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum KeyProviderConfig {
-    Plaintext {
-        master_seed_hex: String,
-    },
-    #[cfg(feature = "pkcs11")]
-    Pkcs11 {
-        pkcs11_library: String,
-        slot: usize,
-        pin: Option<String>,
-        key_label: String,
-    },
+pub struct KeyProviderConfig {
+    pub pkcs11_library: String,
+    pub slot: usize,
+    pub pin: Option<String>,
+    pub key_label: String,
 }
 
 impl KeyProviderConfig {
     pub fn create_provider(&self) -> Result<Box<dyn MasterKeyProvider + 'static>> {
-        match self {
-            KeyProviderConfig::Plaintext { master_seed_hex } => {
-                let provider = PlaintextKeyProvider::from_hex(master_seed_hex)?;
-                tracing::info!("Using plaintext key provider: {}", provider.description());
-                Ok(Box::new(provider))
-            }
-            #[cfg(feature = "pkcs11")]
-            KeyProviderConfig::Pkcs11 {
-                pkcs11_library,
-                slot,
-                pin,
-                key_label,
-            } => {
-                let provider =
-                    Pkcs11KeyProvider::new(pkcs11_library, *slot, pin.clone(), key_label.clone())?;
-                tracing::info!("Using PKCS#11 key provider: {}", provider.description());
-                Ok(Box::new(provider))
-            }
-        }
+        let provider = Pkcs11KeyProvider::new(
+            &self.pkcs11_library,
+            self.slot,
+            self.pin.clone(),
+            self.key_label.clone(),
+        )?;
+        tracing::info!("Using PKCS#11 HSM key provider: {}", provider.description());
+        Ok(Box::new(provider))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[test]
-    fn test_plaintext_provider() {
-        let seed = vec![0u8; 32];
-        let provider = PlaintextKeyProvider::new(seed);
-
-        // Same passphrase should produce same RNG
-        let rng1 = provider.derive_rng("test-passphrase", "").unwrap();
-        let rng2 = provider.derive_rng("test-passphrase", "").unwrap();
-
-        // Can't directly compare RNGs, but we can verify they produce same output
-        let mut rng1 = rng1;
-        let mut rng2 = rng2;
-
-        use rand::RngCore;
-        assert_eq!(rng1.next_u64(), rng2.next_u64());
-    }
-
-    #[test]
-    fn test_different_passphrases() {
-        let seed = vec![0u8; 32];
-        let provider = PlaintextKeyProvider::new(seed);
-
-        let rng1 = provider.derive_rng("passphrase1", "").unwrap();
-        let rng2 = provider.derive_rng("passphrase2", "").unwrap();
-
-        // Different passphrases should produce different RNGs
-        let mut rng1 = rng1;
-        let mut rng2 = rng2;
-
-        use rand::RngCore;
-        assert_ne!(rng1.next_u64(), rng2.next_u64());
-    }
-
-    #[test]
-    fn test_curve_prefix() {
-        let seed = vec![0u8; 32];
-        let provider = PlaintextKeyProvider::new(seed);
-
-        // Same passphrase but different curve should produce different RNG
-        let rng1 = provider.derive_rng("test", "secp256k1").unwrap();
-        let rng2 = provider.derive_rng("test", "ed25519").unwrap();
-
-        let mut rng1 = rng1;
-        let mut rng2 = rng2;
-
-        use rand::RngCore;
-        assert_ne!(rng1.next_u64(), rng2.next_u64());
-    }
+    // PKCS#11/HSM key provider tests require actual HSM setup
+    // Run integration tests with: cargo xtask test-dkg
+    // This will use SoftHSM for testing
 }

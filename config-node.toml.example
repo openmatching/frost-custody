@@ -1,0 +1,67 @@
+# FROST MPC Signer Node Configuration
+#
+# This is a minimal example for a single FROST signer node.
+# All nodes use PKCS#11 HSM for secure key storage.
+
+[network]
+type = "testnet"  # or "mainnet"
+
+[server]
+role = "node"
+host = "0.0.0.0"
+port = 4000
+
+[node]
+index = 0  # Node index: 0, 1, 2, etc.
+storage_path = "./data/frost-node0"
+max_signers = 3  # Total number of nodes in threshold setup
+min_signers = 2  # Minimum nodes required to sign (threshold)
+
+# ============================================================================
+# PKCS#11 HSM Configuration
+# ============================================================================
+# 
+# Development: Use SoftHSM (included in Docker setup)
+# Production: Use YubiKey, enterprise HSM, or cloud HSM
+#
+# To initialize SoftHSM:
+#   1. Run: ./scripts/init-softhsm.sh node0
+#   2. This creates token "frost-node-0" with PIN 123456
+#   3. Generates EC P-256 master key inside HSM
+#
+# ============================================================================
+
+[node.key_provider]
+# SoftHSM (development/testing)
+pkcs11_library = "/usr/lib/softhsm/libsofthsm2.so"
+
+# Slot number (usually 0 for first token)
+slot = 0
+
+# PIN for HSM access (use environment variable in production!)
+# Production: pin = "${HSM_PIN}" and set HSM_PIN environment variable
+pin = "123456"
+
+# Key label (must match key generated in HSM)
+key_label = "frost-master-key-node0"
+
+# ============================================================================
+# Alternative HSM Examples (comment out SoftHSM, uncomment your device)
+# ============================================================================
+
+# YubiKey 5 Series (USB token, ~$50)
+# pkcs11_library = "/usr/lib/libykcs11.so"          # Linux
+# pkcs11_library = "/usr/local/lib/libykcs11.dylib"  # macOS
+# key_label = "frost-node-0"
+# pin = "${YUBIKEY_PIN}"
+
+# AWS CloudHSM
+# pkcs11_library = "/opt/cloudhsm/lib/libcloudhsm_pkcs11.so"
+# key_label = "frost-node-0"
+# pin = "${CLOUDHSM_PIN}"
+
+# Thales Luna HSM
+# pkcs11_library = "/opt/nfast/toolkits/pkcs11/libcknfast.so"
+# key_label = "frost-node-0"
+# pin = "${LUNA_PIN}"
+

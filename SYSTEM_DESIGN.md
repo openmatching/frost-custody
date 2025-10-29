@@ -25,7 +25,7 @@
 
 **FROST MPC solution:**
 - 1 passphrase per user = 1 unique address
-- Backup: n master seeds
+- Backup: n HSM keys
 - API-based signing (no manual intervention)
 - Threshold security (m-of-n tolerance)
 - Small transactions (same as single-sig)
@@ -70,7 +70,7 @@
 
 **Critical (lose this = lose everything):**
 
-1. **Master Seeds** - One per node (BIP39 24-word mnemonic)
+1. **HSM Keys** - One per node (stored in PKCS#11 HSM)
    ```
    Node 0: [abandon abandon ... art]
    Node 1: [zoo zoo ... wrong]
@@ -96,7 +96,7 @@
 ### Recovery (Total Infrastructure Loss)
 
 ```bash
-# 1. Deploy n nodes with original master seeds
+# 1. Deploy n nodes with original HSM keys
 # 2. Regenerate all keys
 for passphrase in all_passphrases:
     POST /api/address/generate {"passphrase": "$passphrase"}
@@ -117,26 +117,39 @@ for passphrase in all_passphrases:
 
 ### Quick Reference
 
-| Compromised            | Generate Addresses? | Sign Txs? | Funds Safe?      | Action                 |
-| ---------------------- | ------------------- | --------- | ---------------- | ---------------------- |
-| < m node **data**      | No                  | No        | ✅ Yes            | Monitor                |
-| ≥ m node **data**      | No                  | Yes*      | ⚠️ **Critical**   | Migrate funds          |
-| < n **master seeds**   | No                  | No        | ✅ Yes            | Audit only             |
-| All n **master seeds** | Yes                 | Yes       | ❌ **Total loss** | Migrate immediately    |
-| Address aggregator     | Yes                 | No        | ✅ Yes            | Low impact             |
-| Signing aggregator     | No                  | Yes*      | ⚠️ High           | Depends on passphrases |
+| Compromised                   | Generate Addresses? | Sign Txs? | Funds Safe?      | Action                 |
+| ----------------------------- | ------------------- | --------- | ---------------- | ---------------------- |
+| < m node **data**             | No                  | No        | ✅ Yes            | Monitor                |
+| ≥ m node **data** (encrypted) | No                  | No        | ✅ Yes            | Monitor                |
+| ≥ m (data + HSM + PIN)        | No                  | Yes*      | ⚠️ **Critical**   | Migrate funds          |
+| < n **HSM keys**              | No                  | No        | ✅ Yes            | Audit only             |
+| All n **HSM keys**            | Yes                 | Yes       | ❌ **Total loss** | Migrate immediately    |
+| Address aggregator            | Yes                 | No        | ✅ Yes            | Low impact             |
+| Signing aggregator            | No                  | Yes*      | ⚠️ High           | Depends on passphrases |
 
 **\* Needs passphrases** - Safe if high-entropy (UUID), critical if sequential (1,2,3...)
 
-### Key Insight: Data vs Master Seeds
+**Key Insight:** RocksDB data is encrypted with keys derived from HSM signatures. 
+Attacker needs **ALL THREE**: node data + HSM access + PIN to decrypt and use key shares.
 
-**Node Data = RocksDB shares for specific passphrases**
-- Compromising ≥m nodes → can sign for those passphrases
-- Limited scope: only affects passphrases in database
+### Key Insight: Defense in Depth
 
-**Master Seeds = Root secrets**
-- Compromising all n seeds → can regenerate ANY passphrase's keys
+**Node Data = Encrypted RocksDB shares**
+- Encrypted with AES-256-GCM
+- Encryption key derived from HSM signature  
+- **Compromising ≥m node data alone → USELESS** (encrypted!)
+- Attacker needs: **data + HSM + PIN** for each of ≥m nodes
+
+**HSM Keys = Root secrets**
+- Stored in PKCS#11 hardware
+- **Compromising all n HSM keys → can regenerate ANY passphrase's keys**
 - Total compromise: affects all past and future keys
+
+**Security layers:**
+1. **Data layer**: Encrypted at rest (AES-256-GCM)
+2. **HSM layer**: Keys in hardware (PIN-protected)
+3. **Network layer**: Internal-only signer nodes
+4. **Threshold**: Need ≥m nodes to operate
 
 ---
 
@@ -154,26 +167,53 @@ for passphrase in all_passphrases:
 
 ### 2. Threshold Nodes Compromised (≥ m)
 
-**Example:** 18+ nodes in 18-of-24 config
+**Scenario A: Only node data stolen (≥m servers)**
 
-**Impact:** ⚠️ **Critical** if passphrases compromised
+**Example:** 18+ nodes' RocksDB data in 18-of-24 config
+
+**Impact:** ✅ **Safe** - Data is encrypted
+
+**Attacker gets:**
+- Encrypted FROST shares from 18+ nodes
+- **Cannot decrypt** (needs HSM + PIN for each node)
+
+**Cannot do:**
+- Cannot decrypt shares (no HSM access)
+- Cannot sign anything
+
+---
+
+**Scenario B: Data + HSM + PIN for ≥m nodes**
+
+**Example:** Physical access to 18+ servers + their HSM devices + PINs
+
+**Impact:** ⚠️ **Critical** - Can sign for known passphrases
+
+**Attacker can:**
+- Decrypt RocksDB shares (has HSM + PIN)
+- Sign for passphrases in database
+- Drain funds for known passphrases
+
+**Cannot do:**
+- Cannot generate NEW addresses (needs all n HSM keys)
+- Cannot guess unknown passphrases (if high-entropy)
 
 **Action depends on passphrase entropy:**
 
 **High-entropy (UUID, 256-bit hex/base58):**
-- Attacker can't guess passphrases → plan migration (not urgent)
-- Monitor for unusual activity
+- Attacker can't guess → plan migration (not urgent)
+- Monitor for unusual HSM activity
 
-**Low-entropy (sequential IDs: 1, 2, 3...):**
+**Low-entropy (sequential: 1, 2, 3...):**
 - Attacker CAN enumerate → **MIGRATE NOW**
-- Freeze signing aggregator immediately
-- Move all funds to new infrastructure
+- Freeze signing aggregator
+- Move all funds immediately
 
-**Reality:** No key rotation exists. Must migrate funds on-chain.
+**Reality:** Compromising data + HSM + PIN for ≥m nodes is MUCH harder than just stealing data files.
 
 ---
 
-### 3. Some Master Seeds Compromised (< n)
+### 3. Some HSM Keys Compromised (< n)
 
 **Example:** 20 of 24 seeds compromised
 
@@ -185,7 +225,7 @@ for passphrase in all_passphrases:
 
 ---
 
-### 4. All Master Seeds Compromised (n/n)
+### 4. All HSM Keys Compromised (n/n)
 
 **Impact:** ❌ **Total compromise**
 
@@ -224,7 +264,7 @@ for passphrase in all_passphrases:
 - All funds locked forever
 
 **Prevention:** 
-- Back up master seeds
+- Back up HSM keys
 - Test recovery quarterly
 - Multiple geographic locations
 
@@ -310,7 +350,7 @@ If ≥m nodes compromised:
 **PKCS#11 support enabled by default** - works with any compliant device.
 
 **Supported:**
-- SoftHSM ($0, testing) - `cargo xtask test-dkg --hsm`
+- SoftHSM ($0, testing) - `cargo xtask test-dkg`
 - YubiKey ($55, USB token)
 - Thales HSM ($5K+, enterprise)
 - AWS CloudHSM ($1K/month, cloud)
@@ -342,10 +382,11 @@ Setup: `frost-service/CONFIG_HSM.md` | Testing: `hsm/README.md`
 5. **Encrypted storage (AES-256-GCM at rest)**
 
 **Encrypted RocksDB:**
-- All key shares encrypted before storage
-- AES key derived from master key/HSM
-- Defense in depth (disk stolen = encrypted data)
+- All key shares encrypted before storage (AES-256-GCM)
+- Encryption key derived from HSM signature (deterministic)
+- **Defense in depth: Even with ≥m nodes compromised, attacker needs HSM + PIN**
 - Minimal HSM overhead (1 signature per passphrase)
+- Encrypted data is useless without corresponding HSM access
 
 **Limitations:**
 - No key rotation (on-chain migration required)

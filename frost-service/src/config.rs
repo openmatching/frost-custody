@@ -89,13 +89,8 @@ pub struct NodeConfig {
     #[serde(rename = "index")]
     pub node_index: u16,
 
-    // Plaintext master seed (simple, for development)
-    #[serde(default)]
-    pub master_seed_hex: Option<String>,
-
-    // Key provider configuration (plaintext or PKCS#11)
-    #[serde(default)]
-    pub key_provider: Option<crate::node::key_provider::KeyProviderConfig>,
+    // PKCS#11 key provider configuration (mandatory - works with SoftHSM or any HSM)
+    pub key_provider: crate::node::key_provider::KeyProviderConfig,
 
     #[serde(default = "default_storage_path")]
     pub storage_path: String,
@@ -110,20 +105,7 @@ impl NodeConfig {
     pub fn create_key_provider(
         &self,
     ) -> anyhow::Result<Box<dyn crate::node::key_provider::MasterKeyProvider>> {
-        use crate::node::key_provider::PlaintextKeyProvider;
-
-        // Try key_provider config first
-        if let Some(config) = &self.key_provider {
-            return config.create_provider();
-        }
-
-        // Fallback to master_seed_hex
-        if let Some(hex) = &self.master_seed_hex {
-            return PlaintextKeyProvider::from_hex(hex)
-                .map(|p| Box::new(p) as Box<dyn crate::node::key_provider::MasterKeyProvider>);
-        }
-
-        anyhow::bail!("No key provider configured. Set either 'key_provider' or 'master_seed_hex'");
+        self.key_provider.create_provider()
     }
 }
 

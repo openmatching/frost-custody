@@ -79,10 +79,15 @@ port = 4000
 
 [node]
 index = 0
-master_seed_hex = "..."  # Random for testing
 storage_path = "/data/node0"
 max_signers = 24
 min_signers = 16
+
+[node.key_provider]
+pkcs11_library = "/usr/lib/softhsm/libsofthsm2.so"
+slot = 0
+pin = "123456"
+key_label = "frost-master-key-node0"
 ```
 
 **Aggregator config** (`tests/configs/aggregator.toml`):

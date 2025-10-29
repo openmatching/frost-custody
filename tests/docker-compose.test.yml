@@ -7,6 +7,12 @@
 #   - 1 address aggregator (exposed port 9100)
 #   - Client connects only to aggregator
 #
+# Performance:
+#   First run:  ~900ms (generates SoftHSM keys)
+#   Subsequent: ~900ms (reuses cached keys from volumes)
+#   
+#   To reset keys: docker-compose -f tests/docker-compose.test.yml down -v
+#
 # Usage:
 #   cargo xtask test-dkg
 
@@ -19,12 +25,14 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: frost-test-node-00
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=0
     volumes:
       - ./configs/node-00.toml:/etc/config.toml:ro
       - frost-test-data-00:/data
+      - frost-test-softhsm-00:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -32,12 +40,14 @@ services:
   frost-node-01:
     image: frost-mpc:latest
     container_name: frost-test-node-01
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=1
     volumes:
       - ./configs/node-01.toml:/etc/config.toml:ro
       - frost-test-data-01:/data
+      - frost-test-softhsm-01:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -45,12 +55,14 @@ services:
   frost-node-02:
     image: frost-mpc:latest
     container_name: frost-test-node-02
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=2
     volumes:
       - ./configs/node-02.toml:/etc/config.toml:ro
       - frost-test-data-02:/data
+      - frost-test-softhsm-02:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -58,12 +70,14 @@ services:
   frost-node-03:
     image: frost-mpc:latest
     container_name: frost-test-node-03
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=3
     volumes:
       - ./configs/node-03.toml:/etc/config.toml:ro
       - frost-test-data-03:/data
+      - frost-test-softhsm-03:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -71,12 +85,14 @@ services:
   frost-node-04:
     image: frost-mpc:latest
     container_name: frost-test-node-04
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=4
     volumes:
       - ./configs/node-04.toml:/etc/config.toml:ro
       - frost-test-data-04:/data
+      - frost-test-softhsm-04:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -84,12 +100,14 @@ services:
   frost-node-05:
     image: frost-mpc:latest
     container_name: frost-test-node-05
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=5
     volumes:
       - ./configs/node-05.toml:/etc/config.toml:ro
       - frost-test-data-05:/data
+      - frost-test-softhsm-05:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -97,12 +115,14 @@ services:
   frost-node-06:
     image: frost-mpc:latest
     container_name: frost-test-node-06
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=6
     volumes:
       - ./configs/node-06.toml:/etc/config.toml:ro
       - frost-test-data-06:/data
+      - frost-test-softhsm-06:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -110,12 +130,14 @@ services:
   frost-node-07:
     image: frost-mpc:latest
     container_name: frost-test-node-07
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=7
     volumes:
       - ./configs/node-07.toml:/etc/config.toml:ro
       - frost-test-data-07:/data
+      - frost-test-softhsm-07:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -123,12 +145,14 @@ services:
   frost-node-08:
     image: frost-mpc:latest
     container_name: frost-test-node-08
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=8
     volumes:
       - ./configs/node-08.toml:/etc/config.toml:ro
       - frost-test-data-08:/data
+      - frost-test-softhsm-08:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -136,12 +160,14 @@ services:
   frost-node-09:
     image: frost-mpc:latest
     container_name: frost-test-node-09
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=9
     volumes:
       - ./configs/node-09.toml:/etc/config.toml:ro
       - frost-test-data-09:/data
+      - frost-test-softhsm-09:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -149,12 +175,14 @@ services:
   frost-node-10:
     image: frost-mpc:latest
     container_name: frost-test-node-10
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=10
     volumes:
       - ./configs/node-10.toml:/etc/config.toml:ro
       - frost-test-data-10:/data
+      - frost-test-softhsm-10:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -162,12 +190,14 @@ services:
   frost-node-11:
     image: frost-mpc:latest
     container_name: frost-test-node-11
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=11
     volumes:
       - ./configs/node-11.toml:/etc/config.toml:ro
       - frost-test-data-11:/data
+      - frost-test-softhsm-11:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -175,12 +205,14 @@ services:
   frost-node-12:
     image: frost-mpc:latest
     container_name: frost-test-node-12
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=12
     volumes:
       - ./configs/node-12.toml:/etc/config.toml:ro
       - frost-test-data-12:/data
+      - frost-test-softhsm-12:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -188,12 +220,14 @@ services:
   frost-node-13:
     image: frost-mpc:latest
     container_name: frost-test-node-13
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=13
     volumes:
       - ./configs/node-13.toml:/etc/config.toml:ro
       - frost-test-data-13:/data
+      - frost-test-softhsm-13:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -201,12 +235,14 @@ services:
   frost-node-14:
     image: frost-mpc:latest
     container_name: frost-test-node-14
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=14
     volumes:
       - ./configs/node-14.toml:/etc/config.toml:ro
       - frost-test-data-14:/data
+      - frost-test-softhsm-14:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -214,12 +250,14 @@ services:
   frost-node-15:
     image: frost-mpc:latest
     container_name: frost-test-node-15
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=15
     volumes:
       - ./configs/node-15.toml:/etc/config.toml:ro
       - frost-test-data-15:/data
+      - frost-test-softhsm-15:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -227,12 +265,14 @@ services:
   frost-node-16:
     image: frost-mpc:latest
     container_name: frost-test-node-16
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=16
     volumes:
       - ./configs/node-16.toml:/etc/config.toml:ro
       - frost-test-data-16:/data
+      - frost-test-softhsm-16:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -240,12 +280,14 @@ services:
   frost-node-17:
     image: frost-mpc:latest
     container_name: frost-test-node-17
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=17
     volumes:
       - ./configs/node-17.toml:/etc/config.toml:ro
       - frost-test-data-17:/data
+      - frost-test-softhsm-17:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -253,12 +295,14 @@ services:
   frost-node-18:
     image: frost-mpc:latest
     container_name: frost-test-node-18
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=18
     volumes:
       - ./configs/node-18.toml:/etc/config.toml:ro
       - frost-test-data-18:/data
+      - frost-test-softhsm-18:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -266,12 +310,14 @@ services:
   frost-node-19:
     image: frost-mpc:latest
     container_name: frost-test-node-19
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=19
     volumes:
       - ./configs/node-19.toml:/etc/config.toml:ro
       - frost-test-data-19:/data
+      - frost-test-softhsm-19:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -279,12 +325,14 @@ services:
   frost-node-20:
     image: frost-mpc:latest
     container_name: frost-test-node-20
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=20
     volumes:
       - ./configs/node-20.toml:/etc/config.toml:ro
       - frost-test-data-20:/data
+      - frost-test-softhsm-20:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -292,12 +340,14 @@ services:
   frost-node-21:
     image: frost-mpc:latest
     container_name: frost-test-node-21
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=21
     volumes:
       - ./configs/node-21.toml:/etc/config.toml:ro
       - frost-test-data-21:/data
+      - frost-test-softhsm-21:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -305,12 +355,14 @@ services:
   frost-node-22:
     image: frost-mpc:latest
     container_name: frost-test-node-22
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=22
     volumes:
       - ./configs/node-22.toml:/etc/config.toml:ro
       - frost-test-data-22:/data
+      - frost-test-softhsm-22:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -318,12 +370,14 @@ services:
   frost-node-23:
     image: frost-mpc:latest
     container_name: frost-test-node-23
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX=23
     volumes:
       - ./configs/node-23.toml:/etc/config.toml:ro
       - frost-test-data-23:/data
+      - frost-test-softhsm-23:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -377,26 +431,50 @@ networks:
 
 volumes:
   frost-test-data-00:
+  frost-test-softhsm-00:  # Cached HSM keys
   frost-test-data-01:
+  frost-test-softhsm-01:  # Cached HSM keys
   frost-test-data-02:
+  frost-test-softhsm-02:  # Cached HSM keys
   frost-test-data-03:
+  frost-test-softhsm-03:  # Cached HSM keys
   frost-test-data-04:
+  frost-test-softhsm-04:  # Cached HSM keys
   frost-test-data-05:
+  frost-test-softhsm-05:  # Cached HSM keys
   frost-test-data-06:
+  frost-test-softhsm-06:  # Cached HSM keys
   frost-test-data-07:
+  frost-test-softhsm-07:  # Cached HSM keys
   frost-test-data-08:
+  frost-test-softhsm-08:  # Cached HSM keys
   frost-test-data-09:
+  frost-test-softhsm-09:  # Cached HSM keys
   frost-test-data-10:
+  frost-test-softhsm-10:  # Cached HSM keys
   frost-test-data-11:
+  frost-test-softhsm-11:  # Cached HSM keys
   frost-test-data-12:
+  frost-test-softhsm-12:  # Cached HSM keys
   frost-test-data-13:
+  frost-test-softhsm-13:  # Cached HSM keys
   frost-test-data-14:
+  frost-test-softhsm-14:  # Cached HSM keys
   frost-test-data-15:
+  frost-test-softhsm-15:  # Cached HSM keys
   frost-test-data-16:
+  frost-test-softhsm-16:  # Cached HSM keys
   frost-test-data-17:
+  frost-test-softhsm-17:  # Cached HSM keys
   frost-test-data-18:
+  frost-test-softhsm-18:  # Cached HSM keys
   frost-test-data-19:
+  frost-test-softhsm-19:  # Cached HSM keys
   frost-test-data-20:
+  frost-test-softhsm-20:  # Cached HSM keys
   frost-test-data-21:
+  frost-test-softhsm-21:  # Cached HSM keys
   frost-test-data-22:
+  frost-test-softhsm-22:  # Cached HSM keys
   frost-test-data-23:
+  frost-test-softhsm-23:  # Cached HSM keys

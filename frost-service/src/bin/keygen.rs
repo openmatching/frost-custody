@@ -1,13 +1,12 @@
 use anyhow::Result;
-use frost_secp256k1_tr as frost;
-use rand::rngs::OsRng;
-use std::collections::BTreeMap;
 use std::env;
 
 fn main() -> Result<()> {
-    println!("=== FROST Key Generation for FROST Custody ===\n");
+    println!("╔═══════════════════════════════════════════════════════════╗");
+    println!("║     FROST HSM Key Generation - Setup Guide               ║");
+    println!("╚═══════════════════════════════════════════════════════════╝\n");
 
-    // Parse command-line arguments for M-of-N configuration
+    // Parse threshold configuration from args
     let args: Vec<String> = env::args().collect();
     let (min_signers, max_signers) = if args.len() >= 3 {
         let m: u16 = args[1].parse().expect("Invalid min_signers (M)");
@@ -26,69 +25,89 @@ fn main() -> Result<()> {
         (2, 3)
     };
 
-    println!("Configuration:");
+    println!("Target Configuration:");
     println!("  Threshold: {}-of-{}", min_signers, max_signers);
     println!(
-        "  (Need {} nodes to sign, can tolerate {} failures)",
+        "  Need {} nodes to sign, can tolerate {} failures\n",
         min_signers,
         max_signers - min_signers
     );
-    println!();
 
-    // Generate keys using trusted dealer
-    let rng = OsRng;
-    let (shares, _pubkey_package) = frost::keys::generate_with_dealer(
-        max_signers,
-        min_signers,
-        frost::keys::IdentifierList::Default,
-        rng,
-    )?;
+    println!("═══════════════════════════════════════════════════════════");
+    println!("  Step 1: Initialize SoftHSM Token for Each Node");
+    println!("═══════════════════════════════════════════════════════════\n");
 
-    println!("Generated {} key shares\n", shares.len());
-
-    // Convert to key packages
-    let mut key_packages = BTreeMap::new();
-    for (identifier, secret_share) in shares {
-        let key_package = frost::keys::KeyPackage::try_from(secret_share)?;
-        key_packages.insert(identifier, key_package);
+    for i in 0..max_signers {
+        println!("Node {}:", i);
+        println!("  ./scripts/init-softhsm.sh node{}", i);
+        println!();
     }
 
-    println!("=== FROST KEY PACKAGES ===\n");
+    println!("This creates:");
+    for i in 0..max_signers {
+        println!("  - SoftHSM token: frost-node-{}", i);
+        println!("  - Master key:    frost-master-key-node{}", i);
+    }
+    println!();
 
-    // Output each key package
-    for (idx, (identifier, key_package)) in key_packages.iter().enumerate() {
-        println!("=== NODE {} ===", idx);
-        println!("Identifier: {:?}", identifier);
+    println!("═══════════════════════════════════════════════════════════");
+    println!("  Step 2: Configure Each Node");
+    println!("═══════════════════════════════════════════════════════════\n");
 
-        let key_json = serde_json::to_vec(&key_package)?;
-        let key_hex = hex::encode(&key_json);
-
-        println!("Key package (SECRET - store in config):");
-        println!("{}\n", key_hex);
-
-        println!("Config snippet for node {}:", idx);
+    for i in 0..max_signers {
+        println!("Node {} config (config-node{}.toml):", i, i);
         println!("---");
-        println!("[frost]");
-        println!("node_index = {}", idx);
-        println!("master_seed_hex = \"{}\"", key_hex);
-        println!("storage_path = \"./data/frost-shares-node{}\"", idx);
+        println!("[server]");
+        println!("role = \"node\"");
+        println!("host = \"0.0.0.0\"");
+        println!("port = 4000\n");
+        println!("[node]");
+        println!("index = {}", i);
+        println!("storage_path = \"./data/frost-node{}\"", i);
+        println!("max_signers = {}", max_signers);
+        println!("min_signers = {}\n", min_signers);
+        println!("[node.key_provider]");
+        println!("pkcs11_library = \"/usr/lib/softhsm/libsofthsm2.so\"");
+        println!("slot = 0");
+        println!("pin = \"123456\"  # Use ${{HSM_PIN}} in production!");
+        println!("key_label = \"frost-master-key-node{}\"", i);
         println!("---\n");
     }
 
-    println!("⚠️  IMPORTANT:");
-    println!("  1. Each node gets its own master_seed_hex (keep secret!)");
-    println!("  2. master_seed_hex is used to deterministically derive FROST shares");
-    println!(
-        "  3. Backup all {} master seeds separately (BIP39 mnemonics recommended)",
-        max_signers
-    );
-    println!("  4. Shares are stored in RocksDB (cache) and regenerated from master seed");
+    println!("═══════════════════════════════════════════════════════════");
+    println!("  Step 3: Start Nodes");
+    println!("═══════════════════════════════════════════════════════════\n");
+
+    for i in 0..max_signers {
+        println!(
+            "Node {}: cargo run --bin frost-service -- config-node{}.toml",
+            i, i
+        );
+    }
     println!();
-    println!("💡 Note: pubkey_package is no longer in config!");
-    println!("   It's stored in RocksDB and regenerated during DKG.");
-    println!();
+
+    println!("═══════════════════════════════════════════════════════════");
+    println!("  Production HSM Migration");
+    println!("═══════════════════════════════════════════════════════════\n");
+
+    println!("To upgrade from SoftHSM to production HSM:");
+    println!("  1. Generate key on production HSM:");
+    println!("     pkcs11-tool --module /opt/cloudhsm/lib/libcloudhsm_pkcs11.so \\");
+    println!("       --login --pin $PROD_PIN \\");
+    println!("       --keypairgen --key-type EC:prime256v1 \\");
+    println!("       --label frost-master-key-node0\n");
+    println!("  2. Update config (only library path changes!):");
+    println!("     pkcs11_library = \"/opt/cloudhsm/lib/libcloudhsm_pkcs11.so\"\n");
+    println!("  3. Restart - same code, different hardware!\n");
+
+    println!("Supported HSM devices:");
+    println!("  - SoftHSM       (development, free)");
+    println!("  - YubiKey 5     (small prod, $50)");
+    println!("  - AWS CloudHSM  (cloud, $1K/month)");
+    println!("  - Thales Luna   (enterprise, $5K+)\n");
+
     println!("Usage:");
-    println!("  cargo run --bin frost-keygen           # Default 2-of-3");
+    println!("  cargo run --bin frost-keygen           # 2-of-3 (default)");
     println!("  cargo run --bin frost-keygen 3 5       # 3-of-5");
     println!("  cargo run --bin frost-keygen 14 21     # 14-of-21");
 

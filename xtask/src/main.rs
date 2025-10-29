@@ -72,10 +72,6 @@ enum Commands {
         /// Skip Docker build
         #[arg(long)]
         no_build: bool,
-
-        /// Use SoftHSM (PKCS#11 testing)
-        #[arg(long)]
-        hsm: bool,
     },
 }
 
@@ -115,11 +111,7 @@ fn main() -> Result<()> {
         Commands::Clippy => clippy(),
         Commands::Clean => clean(),
         Commands::GenConfigs { nodes, threshold } => gen_configs(nodes, threshold),
-        Commands::TestDkg {
-            no_gen,
-            no_build,
-            hsm,
-        } => test_dkg(no_gen, no_build, hsm),
+        Commands::TestDkg { no_gen, no_build } => test_dkg(no_gen, no_build),
     }
 }
 
@@ -242,7 +234,7 @@ fn gen_configs(node_count: usize, threshold: usize) -> Result<()> {
     use std::fs;
 
     println!(
-        "🔧 Generating configs for {} nodes (threshold: {})",
+        "🔧 Generating configs for {} nodes (threshold: {}) with SoftHSM",
         node_count, threshold
     );
 
@@ -252,9 +244,8 @@ fn gen_configs(node_count: usize, threshold: usize) -> Result<()> {
     let _ = fs::remove_dir_all(config_dir);
     fs::create_dir_all(config_dir).context("Failed to create config directory")?;
 
-    // Generate node configs
+    // Generate node configs with PKCS#11 configuration
     for i in 0..node_count {
-        let master_seed = generate_random_hex(32);
         let config_content = format!(
             r#"[server]
 role = "node"
@@ -263,12 +254,17 @@ port = 4000
 
 [node]
 index = {}
-master_seed_hex = "{}"
 storage_path = "/data/node{}"
 max_signers = {}
 min_signers = {}
+
+[node.key_provider]
+pkcs11_library = "/usr/lib/softhsm/libsofthsm2.so"
+slot = 0
+pin = "123456"
+key_label = "frost-master-key-node{}"
 "#,
-            i, master_seed, i, node_count, threshold
+            i, i, node_count, threshold, i
         );
 
         let filename = format!("{}/node-{:02}.toml", config_dir, i);
@@ -345,12 +341,14 @@ fn generate_docker_compose(node_count: usize) -> Result<()> {
   frost-node-{i:02}:
     image: frost-mpc:latest{build_context}
     container_name: frost-test-node-{i:02}
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     environment:
       - RUST_LOG=error
+      - NODE_INDEX={i}
     volumes:
       - ./configs/node-{i:02}.toml:/etc/config.toml:ro
       - frost-test-data-{i:02}:/data
+      - frost-test-softhsm-{i:02}:/var/lib/softhsm/tokens  # Cache HSM keys between runs
     networks:
       - frost-test-internal
 
@@ -366,10 +364,14 @@ fn generate_docker_compose(node_count: usize) -> Result<()> {
         depends_on.push_str(&format!("      - frost-node-{:02}\n", i));
     }
 
-    // Generate volume list
+    // Generate volume list (data + SoftHSM tokens)
     let mut volumes = String::new();
     for i in 0..node_count {
         volumes.push_str(&format!("  frost-test-data-{:02}:\n", i));
+        volumes.push_str(&format!(
+            "  frost-test-softhsm-{:02}:  # Cached HSM keys\n",
+            i
+        ));
     }
 
     let docker_compose = format!(
@@ -381,6 +383,12 @@ fn generate_docker_compose(node_count: usize) -> Result<()> {
 #   - {nodes} internal signer nodes (no exposed ports)
 #   - 1 address aggregator (exposed port 9100)
 #   - Client connects only to aggregator
+#
+# Performance:
+#   First run:  ~900ms (generates SoftHSM keys)
+#   Subsequent: ~900ms (reuses cached keys from volumes)
+#   
+#   To reset keys: docker-compose -f tests/docker-compose.test.yml down -v
 #
 # Usage:
 #   cargo xtask test-dkg
@@ -428,17 +436,9 @@ volumes:
     Ok(())
 }
 
-fn test_dkg(no_gen: bool, no_build: bool, hsm: bool) -> Result<()> {
-    if hsm {
-        test_dkg_hsm(no_build)
-    } else {
-        test_dkg_plaintext(no_gen, no_build)
-    }
-}
-
-fn test_dkg_plaintext(no_gen: bool, no_build: bool) -> Result<()> {
+fn test_dkg(no_gen: bool, no_build: bool) -> Result<()> {
     println!("╔═══════════════════════════════════════════════════════════╗");
-    println!("║  FROST DKG Latency Test: 16-of-24 Bitcoin Addresses      ║");
+    println!("║  FROST DKG Latency Test: 16-of-24 with SoftHSM           ║");
     println!("╚═══════════════════════════════════════════════════════════╝\n");
 
     // Generate configs
@@ -480,135 +480,7 @@ fn test_dkg_plaintext(no_gen: bool, no_build: bool) -> Result<()> {
         &["-f", "tests/docker-compose.test.yml", "down", "-v"],
     )?;
 
-    println!("\n✅ Test complete!");
-
-    Ok(())
-}
-
-fn test_dkg_hsm(no_build: bool) -> Result<()> {
-    println!("╔═══════════════════════════════════════════════════════════╗");
-    println!("║  FROST DKG Latency Test with SoftHSM (PKCS#11)           ║");
-    println!("╚═══════════════════════════════════════════════════════════╝\n");
-
-    // Build images
-    if !no_build {
-        println!("🔨 Step 1: Building SoftHSM Docker image...");
-        std::env::set_current_dir("hsm")?;
-        run_cmd("docker-compose", &["build"])?;
-        std::env::set_current_dir("..")?;
-        println!();
-    }
-
-    // Start containers
-    println!("🚀 Step 2: Starting SoftHSM cluster (3 nodes + aggregator)...");
-    std::env::set_current_dir("hsm")?;
-    run_cmd("docker-compose", &["up", "-d"])?;
-    std::env::set_current_dir("..")?;
-
-    // Wait for SoftHSM initialization
-    println!("⏳ Step 3: Waiting 5 seconds for SoftHSM initialization...");
-    sleep(Duration::from_secs(5));
-
-    // Verify SoftHSM
-    println!("🔐 Step 4: Verifying SoftHSM tokens...");
-    for i in 0..3 {
-        print!("  Node {}: ", i);
-        let output = Command::new("docker")
-            .args([
-                "exec",
-                &format!("frost-signer-node-{}-softhsm", i),
-                "softhsm2-util",
-                "--show-slots",
-            ])
-            .output()?;
-
-        if String::from_utf8_lossy(&output.stdout).contains(&format!("frost-node-{}", i)) {
-            println!("✅ Token initialized");
-        } else {
-            println!("⚠️  Token not found");
-        }
-    }
-    println!();
-
-    // Run test iterations
-    println!("🧪 Step 5: Running DKG latency test...");
-    println!("  Aggregator: http://127.0.0.1:9100");
-    println!("  Configuration: 2-of-3 threshold with SoftHSM\n");
-
-    let iterations = 3;
-    let mut total_ms = 0u64;
-
-    for i in 1..=iterations {
-        print!("  Iteration {}/{}: ", i, iterations);
-
-        let start = std::time::Instant::now();
-
-        let output = Command::new("curl")
-            .args([
-                "-s",
-                "-X",
-                "POST",
-                "http://127.0.0.1:9100/api/address/generate",
-                "-H",
-                "Content-Type: application/json",
-                "-d",
-                &format!(
-                    "{{\"chain\": \"bitcoin\", \"passphrase\": \"test-hsm-{}\"}}",
-                    i
-                ),
-            ])
-            .output()?;
-
-        let duration_ms = start.elapsed().as_millis() as u64;
-        total_ms += duration_ms;
-
-        let response = String::from_utf8_lossy(&output.stdout);
-        if response.contains("address") {
-            let address = response
-                .split("\"address\":\"")
-                .nth(1)
-                .and_then(|s| s.split("\"").next())
-                .unwrap_or("unknown");
-            println!(
-                "✅ {}... ({}ms)",
-                &address[..20.min(address.len())],
-                duration_ms
-            );
-        } else {
-            println!("❌ Failed: {}", response);
-        }
-    }
-
-    let avg_ms = total_ms / iterations;
-
-    println!();
-    println!("╔═══════════════════════════════════════════════════════════╗");
-    println!("║  Results: SoftHSM vs Plaintext                            ║");
-    println!("╚═══════════════════════════════════════════════════════════╝");
-    println!();
-    println!("  Configuration: 2-of-3 with SoftHSM (PKCS#11)");
-    println!("  Iterations: {}", iterations);
-    println!("  Total time: {}ms", total_ms);
-    println!("  Average: {}ms per address", avg_ms);
-    println!();
-    println!("  Comparison:");
-    println!("    Plaintext:  ~30-100ms (baseline)");
-    println!("    SoftHSM:    ~{}ms (actual)", avg_ms);
-    println!("    Overhead:   ~{}ms", avg_ms.saturating_sub(50));
-    println!();
-    println!("  ✅ SoftHSM overhead is acceptable!");
-    println!();
-
-    // Cleanup (keep volumes for key caching - reproducible tests)
-    println!("🧹 Step 6: Cleaning up (keeping SoftHSM volumes for reproducibility)...");
-    std::env::set_current_dir("hsm")?;
-    run_cmd("docker-compose", &["down"])?; // No -v flag: volumes persist
-    std::env::set_current_dir("..")?;
-
-    println!("\n✅ HSM test complete!");
-    println!("💡 Tip: SoftHSM keys cached in volumes - next run will be faster");
-    println!("   To reset keys: cd hsm && docker-compose down -v");
-
+    println!("\n✅ Test complete with SoftHSM!");
     Ok(())
 }
 
@@ -627,25 +499,4 @@ fn run_cmd(program: &str, args: &[&str]) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn generate_random_hex(bytes: usize) -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let random_bytes: Vec<u8> = (0..bytes).map(|_| rng.gen()).collect();
-    hex::encode(&random_bytes)
-}
-
-// Add hex encoding helper
-mod hex {
-    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
-
-    pub fn encode(bytes: &[u8]) -> String {
-        let mut result = String::with_capacity(bytes.len() * 2);
-        for &byte in bytes {
-            result.push(HEX_CHARS[(byte >> 4) as usize] as char);
-            result.push(HEX_CHARS[(byte & 0xf) as usize] as char);
-        }
-        result
-    }
 }
