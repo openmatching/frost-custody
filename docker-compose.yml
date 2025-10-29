@@ -58,26 +58,28 @@ services:
   frost-node1:
     image: frost-mpc:latest
     container_name: frost-signer-node-1
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     volumes:
       - ./frost-config-node1.toml:/etc/config.toml:ro
       - frost-softhsm-node1:/var/lib/softhsm/tokens
       - frost-data-node1:/data
     environment:
       - RUST_LOG=info
+      - NODE_INDEX=1
     networks:
       - frost-internal
 
   frost-node2:
     image: frost-mpc:latest
     container_name: frost-signer-node-2
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     volumes:
       - ./frost-config-node2.toml:/etc/config.toml:ro
       - frost-softhsm-node2:/var/lib/softhsm/tokens
       - frost-data-node2:/data
     environment:
       - RUST_LOG=info
+      - NODE_INDEX=2
     networks:
       - frost-internal
 

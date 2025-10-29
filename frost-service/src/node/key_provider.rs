@@ -123,7 +123,6 @@ pub trait MasterKeyProvider: Send + Sync {
 
 use cryptoki::{
     context::{CInitializeArgs, Pkcs11},
-    mechanism::Mechanism,
     object::{Attribute, ObjectHandle},
     session::{Session, UserType},
     types::AuthPin,
@@ -198,16 +197,39 @@ impl Pkcs11KeyProvider {
             .context(format!("Key with label '{}' not found", self.key_label))
     }
 
-    fn sign_with_key(&self, session: &Session, key: ObjectHandle, data: &[u8]) -> Result<Vec<u8>> {
-        // SoftHSM doesn't support ECDSA-SHA256 combined mechanism
-        // So we hash first, then sign with plain ECDSA
-        let mechanism = Mechanism::Ecdsa;
+    fn get_public_key(&self, session: &Session, _key: ObjectHandle) -> Result<Vec<u8>> {
+        // Get the public key corresponding to the private key
+        // This is deterministic (same key → same public key always)
+        let template = vec![Attribute::Class(cryptoki::object::ObjectClass::PUBLIC_KEY)];
 
-        let signature = session
-            .sign(&mechanism, key, data)
-            .context("Failed to sign with HSM key")?;
+        let pub_objects = session
+            .find_objects(&template)
+            .context("Failed to find public key objects")?;
 
-        Ok(signature)
+        // Find public key with matching label
+        for pub_key in pub_objects {
+            if let Ok(attrs) =
+                session.get_attributes(pub_key, &[cryptoki::object::AttributeType::Label])
+            {
+                if let Some(attr) = attrs.first() {
+                    if let Attribute::Label(label) = attr {
+                        if label == self.key_label.as_bytes() {
+                            // Found matching public key, get EC_POINT
+                            if let Ok(point_attrs) = session.get_attributes(
+                                pub_key,
+                                &[cryptoki::object::AttributeType::EcPoint],
+                            ) {
+                                if let Some(Attribute::EcPoint(point)) = point_attrs.first() {
+                                    return Ok(point.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        anyhow::bail!("Public key not found for label '{}'", self.key_label)
     }
 }
 
@@ -239,21 +261,19 @@ impl MasterKeyProvider for Pkcs11KeyProvider {
         // Find the key
         let key_handle = self.find_key(&session)?;
 
-        // Prepare message to sign: hash(curve_prefix:passphrase)
-        let mut message_data = Vec::new();
+        // Get public key (deterministic - same key always gives same public key)
+        let pubkey_bytes = self.get_public_key(&session, key_handle)?;
+
+        // Derive RNG seed deterministically from public key + passphrase
+        // This is deterministic (no random signatures involved!)
+        let mut seed_material = pubkey_bytes;
         if !curve_prefix.is_empty() {
-            message_data.extend_from_slice(curve_prefix.as_bytes());
-            message_data.extend_from_slice(b":");
+            seed_material.extend_from_slice(curve_prefix.as_bytes());
+            seed_material.extend_from_slice(b":");
         }
-        message_data.extend_from_slice(passphrase.as_bytes());
-        let message_hash = sha256::Hash::hash(&message_data);
+        seed_material.extend_from_slice(passphrase.as_bytes());
 
-        // Sign with HSM key (deterministic if HSM supports RFC 6979)
-        let signature = self.sign_with_key(&session, key_handle, message_hash.as_ref())?;
-
-        // Derive RNG seed from signature
-        // Signature is deterministic → same passphrase = same signature = same RNG
-        let rng_seed_hash = sha256::Hash::hash(&signature);
+        let rng_seed_hash = sha256::Hash::hash(&seed_material);
         let rng_seed: [u8; 32] = *rng_seed_hash.as_byte_array();
 
         // Logout and close session
