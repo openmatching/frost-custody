@@ -27,7 +27,7 @@ min_signers = 2  # Minimum nodes required to sign (threshold)
 # To initialize SoftHSM:
 #   1. Run: ./scripts/init-softhsm.sh node0
 #   2. This creates token "frost-node-0" with PIN 123456
-#   3. Generates EC P-256 master key inside HSM
+#   3. Generates AES-256 key for HMAC-based key derivation
 #
 # ============================================================================
 

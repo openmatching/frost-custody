@@ -88,14 +88,14 @@ echo "🔍 Step 3: Finding token slot..."
 SLOT=$(softhsm2-util --show-slots | grep -B 1 "$TOKEN_LABEL" | grep "Slot" | awk '{print $2}')
 echo "   Token is in slot: $SLOT"
 
-# Step 4: Generate EC P-256 key pair
+# Step 4: Generate AES-256 key for HMAC (deterministic PRF)
 echo ""
-echo "🔑 Step 4: Generating EC P-256 master key..."
+echo "🔑 Step 4: Generating AES-256 key for HMAC-based key derivation..."
 pkcs11-tool --module "$PKCS11_LIB" \
     --slot "$SLOT" \
     --login --pin "$PIN" \
-    --keypairgen \
-    --key-type EC:prime256v1 \
+    --keygen \
+    --key-type AES:32 \
     --label "$KEY_LABEL" \
     --id 01
 
@@ -103,10 +103,10 @@ pkcs11-tool --module "$PKCS11_LIB" \
 echo ""
 echo "✅ Step 5: Verifying key..."
 echo ""
-echo "Public keys in token:"
+echo "Secret keys in token:"
 pkcs11-tool --module "$PKCS11_LIB" \
     --slot "$SLOT" \
-    --list-objects --type pubkey
+    --list-objects --type secrkey
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"

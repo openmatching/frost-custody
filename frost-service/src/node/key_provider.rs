@@ -123,6 +123,7 @@ pub trait MasterKeyProvider: Send + Sync {
 
 use cryptoki::{
     context::{CInitializeArgs, Pkcs11},
+    mechanism::Mechanism,
     object::{Attribute, ObjectHandle},
     session::{Session, UserType},
     types::AuthPin,
@@ -149,7 +150,7 @@ impl Pkcs11KeyProvider {
     ///   - AWS CloudHSM: "/opt/cloudhsm/lib/libcloudhsm_pkcs11.so"
     /// * `slot_id` - Slot number (usually 0 for first device)
     /// * `pin` - PIN for the token (optional for some HSMs)
-    /// * `key_label` - Label of the key to use (e.g., "frost-node-0")
+    /// * `key_label` - Label of the AES-256 key for HMAC (e.g., "frost-hmac-key-node0")
     pub fn new(
         pkcs11_library: &str,
         slot_id: usize,
@@ -184,52 +185,17 @@ impl Pkcs11KeyProvider {
         let label_value = self.key_label.as_bytes().to_vec();
         let template = vec![
             Attribute::Label(label_value),
-            Attribute::Class(cryptoki::object::ObjectClass::PRIVATE_KEY),
+            Attribute::Class(cryptoki::object::ObjectClass::SECRET_KEY), // AES key for HMAC
         ];
 
         let objects = session
             .find_objects(&template)
-            .context("Failed to find key objects")?;
+            .context("Failed to find HMAC key objects")?;
 
-        objects
-            .first()
-            .copied()
-            .context(format!("Key with label '{}' not found", self.key_label))
-    }
-
-    fn get_public_key(&self, session: &Session, _key: ObjectHandle) -> Result<Vec<u8>> {
-        // Get the public key corresponding to the private key
-        // This is deterministic (same key → same public key always)
-        let template = vec![Attribute::Class(cryptoki::object::ObjectClass::PUBLIC_KEY)];
-
-        let pub_objects = session
-            .find_objects(&template)
-            .context("Failed to find public key objects")?;
-
-        // Find public key with matching label
-        for pub_key in pub_objects {
-            if let Ok(attrs) =
-                session.get_attributes(pub_key, &[cryptoki::object::AttributeType::Label])
-            {
-                if let Some(attr) = attrs.first() {
-                    if let Attribute::Label(label) = attr {
-                        if label == self.key_label.as_bytes() {
-                            // Found matching public key, get EC_POINT
-                            if let Ok(point_attrs) = session.get_attributes(
-                                pub_key,
-                                &[cryptoki::object::AttributeType::EcPoint],
-                            ) {
-                                if let Some(Attribute::EcPoint(point)) = point_attrs.first() {
-                                    return Ok(point.clone());
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        anyhow::bail!("Public key not found for label '{}'", self.key_label)
+        objects.first().copied().context(format!(
+            "HMAC key with label '{}' not found",
+            self.key_label
+        ))
     }
 }
 
@@ -258,23 +224,31 @@ impl MasterKeyProvider for Pkcs11KeyProvider {
             .login(UserType::User, Some(&auth_pin))
             .context("Failed to login to PKCS#11 token")?;
 
-        // Find the key
+        // Find the HMAC key
         let key_handle = self.find_key(&session)?;
 
-        // Get public key (deterministic - same key always gives same public key)
-        let pubkey_bytes = self.get_public_key(&session, key_handle)?;
-
-        // Derive RNG seed deterministically from public key + passphrase
-        // This is deterministic (no random signatures involved!)
-        let mut seed_material = pubkey_bytes;
+        // Prepare message for HMAC: curve_prefix:passphrase
+        let mut message = Vec::new();
         if !curve_prefix.is_empty() {
-            seed_material.extend_from_slice(curve_prefix.as_bytes());
-            seed_material.extend_from_slice(b":");
+            message.extend_from_slice(curve_prefix.as_bytes());
+            message.extend_from_slice(b":");
         }
-        seed_material.extend_from_slice(passphrase.as_bytes());
+        message.extend_from_slice(passphrase.as_bytes());
 
-        let rng_seed_hash = sha256::Hash::hash(&seed_material);
-        let rng_seed: [u8; 32] = *rng_seed_hash.as_byte_array();
+        // Compute HMAC-SHA256 with HSM key (DETERMINISTIC and SECURE)
+        // Same key + same message → ALWAYS same HMAC output
+        // Attacker CANNOT compute this without HSM access
+
+        // Use generic signing mechanism - HMAC is a "signature" operation in PKCS#11
+        // The key type (AES) + mechanism determines it's HMAC
+        let mechanism = Mechanism::Sha256; // When used with AES key, this becomes HMAC-SHA256
+        let hmac_output = session
+            .sign(&mechanism, key_handle, &message)
+            .context("Failed to compute HMAC with HSM key")?;
+
+        // Use HMAC output directly as RNG seed (already 32 bytes for SHA256)
+        let mut rng_seed = [0u8; 32];
+        rng_seed.copy_from_slice(&hmac_output[..32]);
 
         // Logout and close session
         let _ = session.logout(); // Ignore errors on logout

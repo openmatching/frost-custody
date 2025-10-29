@@ -91,10 +91,10 @@ fn main() -> Result<()> {
     println!("═══════════════════════════════════════════════════════════\n");
 
     println!("To upgrade from SoftHSM to production HSM:");
-    println!("  1. Generate key on production HSM:");
+    println!("  1. Generate AES key on production HSM:");
     println!("     pkcs11-tool --module /opt/cloudhsm/lib/libcloudhsm_pkcs11.so \\");
     println!("       --login --pin $PROD_PIN \\");
-    println!("       --keypairgen --key-type EC:prime256v1 \\");
+    println!("       --keygen --key-type AES:32 \\");
     println!("       --label frost-master-key-node0\n");
     println!("  2. Update config (only library path changes!):");
     println!("     pkcs11_library = \"/opt/cloudhsm/lib/libcloudhsm_pkcs11.so\"\n");

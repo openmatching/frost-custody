@@ -21,13 +21,13 @@ if [[ "$@" == *"frost-service"* ]] && [ -d "/var/lib/softhsm/tokens" ]; then
         softhsm2-util --init-token --slot 0 --label "$TOKEN_LABEL" \
             --so-pin "$SO_PIN" --pin "$PIN" 2>&1 | head -5
         
-        # Generate EC P-256 key
-        echo "🔑 Generating EC P-256 key: $KEY_LABEL"
+        # Generate AES-256 key for HMAC (deterministic key derivation)
+        echo "🔑 Generating AES-256 key for HMAC: $KEY_LABEL"
         pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so \
             --login --pin "$PIN" \
-            --keypairgen --key-type EC:prime256v1 \
+            --keygen --key-type AES:32 \
             --label "$KEY_LABEL" \
-            --id 01 2>&1 | grep -E "(Using slot|Key pair generated)" || true
+            --id 01 2>&1 | grep -E "(Using slot|Key generated)" || true
         
         echo "✅ SoftHSM initialized: $TOKEN_LABEL / $KEY_LABEL"
     else
