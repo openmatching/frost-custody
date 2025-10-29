@@ -42,13 +42,14 @@ services:
   frost-node0:
     image: frost-mpc:latest
     container_name: frost-signer-node-0
-    entrypoint: ["frost-service"]
+    command: ["frost-service"]
     volumes:
       - ./frost-config-node0.toml:/etc/config.toml:ro
       - frost-softhsm-node0:/var/lib/softhsm/tokens # SoftHSM token storage
       - frost-data-node0:/data # FROST key shares
     environment:
       - RUST_LOG=info
+      - NODE_INDEX=0
     networks:
       - frost-internal
     # No external ports - only aggregator can reach
