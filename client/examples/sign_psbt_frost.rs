@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
     let utxos = vec![
         FrostUtxo {
             txid: Txid::from_str(
-                "435d3ad207facec0def477188156ab694b4a864c0bf4fffe8e14719e9a5ac848",
+                "cb22cc847c939a2796f28b0626ca260e51f0de4b4b9d2b85efb97ff5970a9628",
             )?,
             vout: 1,
             amount: Amount::from_sat(500000), // Real amount from testnet4
@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
         },
         FrostUtxo {
             txid: Txid::from_str(
-                "cf7c43bf5860f3db49402558c8819872acc893adc92b0244f8a028bb449795c6",
+                "7410de02ee13ef2e5eeb5c3b5977a54a863fa8fcfe81ff21e0592f46f89a6f2d",
             )?,
             vout: 1,
             amount: Amount::from_sat(500000), // Real amount from testnet4
