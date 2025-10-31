@@ -27,12 +27,12 @@ bip39.workspace = true
 base64.workspace = true
 miniscript = { version = "12.2", features = ["serde"] }
 frost-secp256k1-tr.workspace = true
-frost-secp256k1 = "2.0.0"                               # ECDSA for Ethereum/EVM
+frost-secp256k1 = "2.0.0"                                        # ECDSA for Ethereum/EVM
 rand.workspace = true
 rand_chacha = "0.3"
 serde_json = "1.0"
 hex = "0.4"
-rocksdb = "0.22"
+rocksdb = { version = "0.22", features = ["multi-threaded-cf"] }
 reqwest = { version = "0.12", features = ["json"] }
 
 # Ethereum support
@@ -48,9 +48,19 @@ borsh = "1.5"
 # Additional crypto
 sha2 = "0.10"
 aes-gcm = "0.10"
+async-trait = "0.1"
 
-# PKCS#11 / HSM support (mandatory - works with SoftHSM, YubiKey, or enterprise HSM)
-cryptoki = "0.6"
+# PKCS#11 / HSM support (optional but default)
+cryptoki = { version = "0.6", optional = true }
+
+# AWS KMS support (optional)
+aws-config = { version = "1.1", optional = true }
+aws-sdk-kms = { version = "1.44", optional = true }
+
+[features]
+default = ["pkcs11"]
+pkcs11 = ["cryptoki"]
+aws-kms = ["aws-config", "aws-sdk-kms"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

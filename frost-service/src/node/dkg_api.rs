@@ -169,6 +169,7 @@ impl UnifiedApi {
 
         let pubkey_package = curve_storage
             .get_pubkey_package(&passphrase, self.key_provider.as_ref())
+            .await
             .map_err(|e| {
                 ApiError::InternalError(Json(ErrorResponse {
                     error: format!("Storage error: {}", e),
@@ -207,6 +208,7 @@ impl UnifiedApi {
 
         let pubkey_package = curve_storage
             .get_pubkey_package(&passphrase, self.key_provider.as_ref())
+            .await
             .map_err(|e| {
                 ApiError::InternalError(Json(ErrorResponse {
                     error: format!("Storage error: {}", e),
@@ -242,6 +244,7 @@ impl UnifiedApi {
 
         let pubkey_package = curve_storage
             .get_pubkey_package(&passphrase, self.key_provider.as_ref())
+            .await
             .map_err(|e| {
                 ApiError::InternalError(Json(ErrorResponse {
                     error: format!("Storage error: {}", e),
@@ -284,7 +287,9 @@ impl UnifiedApi {
             self.config.node_index,
             self.config.max_signers,
             self.config.min_signers,
-        ) {
+        )
+        .await
+        {
             Ok((secret_package, package)) => {
                 // Store secret package for round 2
                 self.dkg_state
@@ -510,19 +515,17 @@ impl UnifiedApi {
             CurveType::Secp256k1Taproot,
         );
 
-        if let Err(e) = curve_storage.store_key_package(
-            &req.passphrase,
-            &key_package,
-            self.key_provider.as_ref(),
-        ) {
+        if let Err(e) = curve_storage
+            .store_key_package(&req.passphrase, &key_package, self.key_provider.as_ref())
+            .await
+        {
             tracing::error!("Failed to store key package: {}", e);
         }
 
-        if let Err(e) = curve_storage.store_pubkey_package(
-            &req.passphrase,
-            &pubkey_package,
-            self.key_provider.as_ref(),
-        ) {
+        if let Err(e) = curve_storage
+            .store_pubkey_package(&req.passphrase, &pubkey_package, self.key_provider.as_ref())
+            .await
+        {
             tracing::error!("Failed to store pubkey package: {}", e);
         }
 
@@ -572,38 +575,45 @@ impl UnifiedApi {
             CurveType::Secp256k1Taproot,
         );
 
-        let key_package =
-            match curve_storage.get_key_package(&req.passphrase, self.key_provider.as_ref()) {
-                Ok(Some(pkg)) => pkg,
-                Ok(None) => {
-                    return FrostRound1Result::InternalError(Json(ErrorResponse {
-                        error: "Key package not found for passphrase".to_string(),
-                    }))
-                }
-                Err(e) => {
-                    return FrostRound1Result::InternalError(Json(ErrorResponse {
-                        error: format!("Storage error: {}", e),
-                    }))
-                }
-            };
+        let key_package = match curve_storage
+            .get_key_package(&req.passphrase, self.key_provider.as_ref())
+            .await
+        {
+            Ok(Some(pkg)) => pkg,
+            Ok(None) => {
+                return FrostRound1Result::InternalError(Json(ErrorResponse {
+                    error: "Key package not found for passphrase".to_string(),
+                }))
+            }
+            Err(e) => {
+                return FrostRound1Result::InternalError(Json(ErrorResponse {
+                    error: format!("Storage error: {}", e),
+                }))
+            }
+        };
 
-        // Generate commitments
-        let mut rng = rand::thread_rng();
-        let (nonces, commitments) =
-            frost_secp256k1_tr::round1::commit(key_package.signing_share(), &mut rng);
+        // Generate commitments (scope rng to avoid Send across await)
+        let (commitments, identifier_hex, message_bytes, nonces_json) = {
+            let mut rng = rand::thread_rng();
+            let (nonces, commitments) =
+                frost_secp256k1_tr::round1::commit(key_package.signing_share(), &mut rng);
+            let identifier_hex = hex::encode(key_package.identifier().serialize());
+            let message_bytes = hex::decode(&req.message).unwrap();
+            let nonces_json = serde_json::to_vec(&nonces).unwrap();
+            (commitments, identifier_hex, message_bytes, nonces_json)
+        };
 
         // Serialize commitments
         let commitments_json = serde_json::to_vec(&commitments).unwrap();
-        let identifier_hex = hex::encode(key_package.identifier().serialize());
 
-        // Serialize and encrypt nonces (bound to message)
-        let message_bytes = hex::decode(&req.message).unwrap();
-        let nonces_json = serde_json::to_vec(&nonces).unwrap();
+        // Encrypt nonces (bound to message)
         let encrypted_nonces = match super::crypto::encrypt_nonces_with_provider(
             &nonces_json,
             &message_bytes,
             self.key_provider.as_ref(),
-        ) {
+        )
+        .await
+        {
             Ok(enc) => enc,
             Err(e) => {
                 return FrostRound1Result::InternalError(Json(ErrorResponse {
@@ -642,7 +652,9 @@ impl UnifiedApi {
             &req.encrypted_nonces,
             &message,
             self.key_provider.as_ref(),
-        ) {
+        )
+        .await
+        {
             Ok(json) => json,
             Err(e) => {
                 return FrostRound2Result::BadRequest(Json(ErrorResponse {
@@ -692,20 +704,22 @@ impl UnifiedApi {
             CurveType::Secp256k1Taproot,
         );
 
-        let key_package =
-            match curve_storage.get_key_package(&req.passphrase, self.key_provider.as_ref()) {
-                Ok(Some(pkg)) => pkg,
-                Ok(None) => {
-                    return FrostRound2Result::BadRequest(Json(ErrorResponse {
-                        error: "Key package not found for passphrase".to_string(),
-                    }))
-                }
-                Err(e) => {
-                    return FrostRound2Result::InternalError(Json(ErrorResponse {
-                        error: format!("Storage error: {}", e),
-                    }))
-                }
-            };
+        let key_package = match curve_storage
+            .get_key_package(&req.passphrase, self.key_provider.as_ref())
+            .await
+        {
+            Ok(Some(pkg)) => pkg,
+            Ok(None) => {
+                return FrostRound2Result::BadRequest(Json(ErrorResponse {
+                    error: "Key package not found for passphrase".to_string(),
+                }))
+            }
+            Err(e) => {
+                return FrostRound2Result::InternalError(Json(ErrorResponse {
+                    error: format!("Storage error: {}", e),
+                }))
+            }
+        };
 
         // Create signing package and sign
         let signing_package = frost_secp256k1_tr::SigningPackage::new(commitments_map, &message);
@@ -805,20 +819,22 @@ impl UnifiedApi {
             CurveType::Secp256k1Taproot,
         );
 
-        let pubkey_package =
-            match curve_storage.get_pubkey_package(&req.passphrase, self.key_provider.as_ref()) {
-                Ok(Some(pkg)) => pkg,
-                Ok(None) => {
-                    return FrostAggregateResult::BadRequest(Json(ErrorResponse {
-                        error: "Pubkey package not found for passphrase".to_string(),
-                    }))
-                }
-                Err(e) => {
-                    return FrostAggregateResult::InternalError(Json(ErrorResponse {
-                        error: format!("Storage error: {}", e),
-                    }))
-                }
-            };
+        let pubkey_package = match curve_storage
+            .get_pubkey_package(&req.passphrase, self.key_provider.as_ref())
+            .await
+        {
+            Ok(Some(pkg)) => pkg,
+            Ok(None) => {
+                return FrostAggregateResult::BadRequest(Json(ErrorResponse {
+                    error: "Pubkey package not found for passphrase".to_string(),
+                }))
+            }
+            Err(e) => {
+                return FrostAggregateResult::InternalError(Json(ErrorResponse {
+                    error: format!("Storage error: {}", e),
+                }))
+            }
+        };
 
         // Aggregate signature
         let signing_package = frost_secp256k1_tr::SigningPackage::new(commitments_map, &message);
@@ -867,7 +883,9 @@ impl UnifiedApi {
             self.config.node_index,
             self.config.max_signers,
             self.config.min_signers,
-        ) {
+        )
+        .await
+        {
             Ok((secret_package, package)) => {
                 // Store secret package for round 2 (use different key to avoid collision)
                 let key = format!("ecdsa:{}", passphrase);
@@ -1116,18 +1134,16 @@ impl UnifiedApi {
                 self.storage.clone(),
                 CurveType::Secp256k1Ecdsa,
             );
-        if let Err(e) = curve_storage.store_key_package(
-            &req.passphrase,
-            &key_package,
-            self.key_provider.as_ref(),
-        ) {
+        if let Err(e) = curve_storage
+            .store_key_package(&req.passphrase, &key_package, self.key_provider.as_ref())
+            .await
+        {
             tracing::error!("Failed to store ECDSA key package: {}", e);
         }
-        if let Err(e) = curve_storage.store_pubkey_package(
-            &req.passphrase,
-            &pubkey_package,
-            self.key_provider.as_ref(),
-        ) {
+        if let Err(e) = curve_storage
+            .store_pubkey_package(&req.passphrase, &pubkey_package, self.key_provider.as_ref())
+            .await
+        {
             tracing::error!("Failed to store ECDSA pubkey package: {}", e);
         }
 
@@ -1168,7 +1184,9 @@ impl UnifiedApi {
             self.config.node_index,
             self.config.max_signers,
             self.config.min_signers,
-        ) {
+        )
+        .await
+        {
             Ok((secret_package, package)) => {
                 // Store secret package for round 2
                 let secret_key = format!("ed25519:r1:{}", passphrase);
@@ -1454,18 +1472,16 @@ impl UnifiedApi {
         // Store key packages in Ed25519 column family
         let curve_storage =
             CurveStorage::<Ed25519Operations>::new(self.storage.clone(), CurveType::Ed25519);
-        if let Err(e) = curve_storage.store_key_package(
-            &req.passphrase,
-            &key_package,
-            self.key_provider.as_ref(),
-        ) {
+        if let Err(e) = curve_storage
+            .store_key_package(&req.passphrase, &key_package, self.key_provider.as_ref())
+            .await
+        {
             tracing::error!("Failed to store Ed25519 key package: {}", e);
         }
-        if let Err(e) = curve_storage.store_pubkey_package(
-            &req.passphrase,
-            &pubkey_package,
-            self.key_provider.as_ref(),
-        ) {
+        if let Err(e) = curve_storage
+            .store_pubkey_package(&req.passphrase, &pubkey_package, self.key_provider.as_ref())
+            .await
+        {
             tracing::error!("Failed to store Ed25519 pubkey package: {}", e);
         }
 
@@ -1515,37 +1531,44 @@ impl UnifiedApi {
                 CurveType::Secp256k1Ecdsa,
             );
 
-        let key_package =
-            match curve_storage.get_key_package(&req.passphrase, self.key_provider.as_ref()) {
-                Ok(Some(pkg)) => pkg,
-                Ok(None) => {
-                    return FrostRound1Result::InternalError(Json(ErrorResponse {
-                        error: "ECDSA key package not found for passphrase".to_string(),
-                    }))
-                }
-                Err(e) => {
-                    return FrostRound1Result::InternalError(Json(ErrorResponse {
-                        error: format!("Storage error: {}", e),
-                    }))
-                }
-            };
+        let key_package = match curve_storage
+            .get_key_package(&req.passphrase, self.key_provider.as_ref())
+            .await
+        {
+            Ok(Some(pkg)) => pkg,
+            Ok(None) => {
+                return FrostRound1Result::InternalError(Json(ErrorResponse {
+                    error: "ECDSA key package not found for passphrase".to_string(),
+                }))
+            }
+            Err(e) => {
+                return FrostRound1Result::InternalError(Json(ErrorResponse {
+                    error: format!("Storage error: {}", e),
+                }))
+            }
+        };
 
-        // Generate commitments
-        let mut rng = rand::thread_rng();
-        let (nonces, commitments) =
-            frost_secp256k1::round1::commit(key_package.signing_share(), &mut rng);
+        // Generate commitments (scope rng to avoid Send across await)
+        let (commitments, identifier_hex, message_bytes, nonces_json) = {
+            let mut rng = rand::thread_rng();
+            let (nonces, commitments) =
+                frost_secp256k1::round1::commit(key_package.signing_share(), &mut rng);
+            let identifier_hex = hex::encode(key_package.identifier().serialize());
+            let message_bytes = hex::decode(&req.message).unwrap();
+            let nonces_json = serde_json::to_vec(&nonces).unwrap();
+            (commitments, identifier_hex, message_bytes, nonces_json)
+        };
 
         let commitments_json = serde_json::to_vec(&commitments).unwrap();
-        let identifier_hex = hex::encode(key_package.identifier().serialize());
 
         // Encrypt nonces
-        let message_bytes = hex::decode(&req.message).unwrap();
-        let nonces_json = serde_json::to_vec(&nonces).unwrap();
         let encrypted_nonces = match super::crypto::encrypt_nonces_with_provider(
             &nonces_json,
             &message_bytes,
             self.key_provider.as_ref(),
-        ) {
+        )
+        .await
+        {
             Ok(enc) => enc,
             Err(e) => {
                 return FrostRound1Result::InternalError(Json(ErrorResponse {
@@ -1583,7 +1606,9 @@ impl UnifiedApi {
             &req.encrypted_nonces,
             &message,
             self.key_provider.as_ref(),
-        ) {
+        )
+        .await
+        {
             Ok(json) => json,
             Err(e) => {
                 return FrostRound2Result::BadRequest(Json(ErrorResponse {
@@ -1634,20 +1659,22 @@ impl UnifiedApi {
                 CurveType::Secp256k1Ecdsa,
             );
 
-        let key_package =
-            match curve_storage.get_key_package(&req.passphrase, self.key_provider.as_ref()) {
-                Ok(Some(pkg)) => pkg,
-                Ok(None) => {
-                    return FrostRound2Result::BadRequest(Json(ErrorResponse {
-                        error: "ECDSA key package not found for passphrase".to_string(),
-                    }))
-                }
-                Err(e) => {
-                    return FrostRound2Result::InternalError(Json(ErrorResponse {
-                        error: format!("Storage error: {}", e),
-                    }))
-                }
-            };
+        let key_package = match curve_storage
+            .get_key_package(&req.passphrase, self.key_provider.as_ref())
+            .await
+        {
+            Ok(Some(pkg)) => pkg,
+            Ok(None) => {
+                return FrostRound2Result::BadRequest(Json(ErrorResponse {
+                    error: "ECDSA key package not found for passphrase".to_string(),
+                }))
+            }
+            Err(e) => {
+                return FrostRound2Result::InternalError(Json(ErrorResponse {
+                    error: format!("Storage error: {}", e),
+                }))
+            }
+        };
 
         // Create signing package and sign
         let signing_package = frost_secp256k1::SigningPackage::new(commitments_map, &message);
@@ -1747,20 +1774,22 @@ impl UnifiedApi {
                 CurveType::Secp256k1Ecdsa,
             );
 
-        let pubkey_package =
-            match curve_storage.get_pubkey_package(&req.passphrase, self.key_provider.as_ref()) {
-                Ok(Some(pkg)) => pkg,
-                Ok(None) => {
-                    return FrostAggregateResult::BadRequest(Json(ErrorResponse {
-                        error: "ECDSA pubkey package not found for passphrase".to_string(),
-                    }))
-                }
-                Err(e) => {
-                    return FrostAggregateResult::InternalError(Json(ErrorResponse {
-                        error: format!("Storage error: {}", e),
-                    }))
-                }
-            };
+        let pubkey_package = match curve_storage
+            .get_pubkey_package(&req.passphrase, self.key_provider.as_ref())
+            .await
+        {
+            Ok(Some(pkg)) => pkg,
+            Ok(None) => {
+                return FrostAggregateResult::BadRequest(Json(ErrorResponse {
+                    error: "ECDSA pubkey package not found for passphrase".to_string(),
+                }))
+            }
+            Err(e) => {
+                return FrostAggregateResult::InternalError(Json(ErrorResponse {
+                    error: format!("Storage error: {}", e),
+                }))
+            }
+        };
 
         // Aggregate ECDSA signature
         let signing_package = frost_secp256k1::SigningPackage::new(commitments_map, &message);
@@ -1861,37 +1890,44 @@ impl UnifiedApi {
         let curve_storage =
             CurveStorage::<Ed25519Operations>::new(self.storage.clone(), CurveType::Ed25519);
 
-        let key_package =
-            match curve_storage.get_key_package(&req.passphrase, self.key_provider.as_ref()) {
-                Ok(Some(pkg)) => pkg,
-                Ok(None) => {
-                    return FrostRound1Result::InternalError(Json(ErrorResponse {
-                        error: "Ed25519 key package not found for passphrase".to_string(),
-                    }))
-                }
-                Err(e) => {
-                    return FrostRound1Result::InternalError(Json(ErrorResponse {
-                        error: format!("Storage error: {}", e),
-                    }))
-                }
-            };
+        let key_package = match curve_storage
+            .get_key_package(&req.passphrase, self.key_provider.as_ref())
+            .await
+        {
+            Ok(Some(pkg)) => pkg,
+            Ok(None) => {
+                return FrostRound1Result::InternalError(Json(ErrorResponse {
+                    error: "Ed25519 key package not found for passphrase".to_string(),
+                }))
+            }
+            Err(e) => {
+                return FrostRound1Result::InternalError(Json(ErrorResponse {
+                    error: format!("Storage error: {}", e),
+                }))
+            }
+        };
 
-        // Generate commitments
-        let mut rng = rand::thread_rng();
-        let (nonces, commitments) =
-            frost_ed25519::round1::commit(key_package.signing_share(), &mut rng);
+        // Generate commitments (scope rng to avoid Send across await)
+        let (commitments, identifier_hex, message_bytes, nonces_json) = {
+            let mut rng = rand::thread_rng();
+            let (nonces, commitments) =
+                frost_ed25519::round1::commit(key_package.signing_share(), &mut rng);
+            let identifier_hex = hex::encode(key_package.identifier().serialize());
+            let message_bytes = hex::decode(&req.message).unwrap();
+            let nonces_json = serde_json::to_vec(&nonces).unwrap();
+            (commitments, identifier_hex, message_bytes, nonces_json)
+        };
 
         let commitments_json = serde_json::to_vec(&commitments).unwrap();
-        let identifier_hex = hex::encode(key_package.identifier().serialize());
 
         // Encrypt nonces
-        let message_bytes = hex::decode(&req.message).unwrap();
-        let nonces_json = serde_json::to_vec(&nonces).unwrap();
         let encrypted_nonces = match super::crypto::encrypt_nonces_with_provider(
             &nonces_json,
             &message_bytes,
             self.key_provider.as_ref(),
-        ) {
+        )
+        .await
+        {
             Ok(enc) => enc,
             Err(e) => {
                 return FrostRound1Result::InternalError(Json(ErrorResponse {
@@ -1929,7 +1965,9 @@ impl UnifiedApi {
             &req.encrypted_nonces,
             &message,
             self.key_provider.as_ref(),
-        ) {
+        )
+        .await
+        {
             Ok(json) => json,
             Err(e) => {
                 return FrostRound2Result::BadRequest(Json(ErrorResponse {
@@ -1977,20 +2015,22 @@ impl UnifiedApi {
         let curve_storage =
             CurveStorage::<Ed25519Operations>::new(self.storage.clone(), CurveType::Ed25519);
 
-        let key_package =
-            match curve_storage.get_key_package(&req.passphrase, self.key_provider.as_ref()) {
-                Ok(Some(pkg)) => pkg,
-                Ok(None) => {
-                    return FrostRound2Result::BadRequest(Json(ErrorResponse {
-                        error: "Ed25519 key package not found for passphrase".to_string(),
-                    }))
-                }
-                Err(e) => {
-                    return FrostRound2Result::InternalError(Json(ErrorResponse {
-                        error: format!("Storage error: {}", e),
-                    }))
-                }
-            };
+        let key_package = match curve_storage
+            .get_key_package(&req.passphrase, self.key_provider.as_ref())
+            .await
+        {
+            Ok(Some(pkg)) => pkg,
+            Ok(None) => {
+                return FrostRound2Result::BadRequest(Json(ErrorResponse {
+                    error: "Ed25519 key package not found for passphrase".to_string(),
+                }))
+            }
+            Err(e) => {
+                return FrostRound2Result::InternalError(Json(ErrorResponse {
+                    error: format!("Storage error: {}", e),
+                }))
+            }
+        };
 
         // Create signing package and sign
         let signing_package = frost_ed25519::SigningPackage::new(commitments_map, &message);
@@ -2087,20 +2127,22 @@ impl UnifiedApi {
         let curve_storage =
             CurveStorage::<Ed25519Operations>::new(self.storage.clone(), CurveType::Ed25519);
 
-        let pubkey_package =
-            match curve_storage.get_pubkey_package(&req.passphrase, self.key_provider.as_ref()) {
-                Ok(Some(pkg)) => pkg,
-                Ok(None) => {
-                    return FrostAggregateResult::BadRequest(Json(ErrorResponse {
-                        error: "Ed25519 pubkey package not found for passphrase".to_string(),
-                    }))
-                }
-                Err(e) => {
-                    return FrostAggregateResult::InternalError(Json(ErrorResponse {
-                        error: format!("Storage error: {}", e),
-                    }))
-                }
-            };
+        let pubkey_package = match curve_storage
+            .get_pubkey_package(&req.passphrase, self.key_provider.as_ref())
+            .await
+        {
+            Ok(Some(pkg)) => pkg,
+            Ok(None) => {
+                return FrostAggregateResult::BadRequest(Json(ErrorResponse {
+                    error: "Ed25519 pubkey package not found for passphrase".to_string(),
+                }))
+            }
+            Err(e) => {
+                return FrostAggregateResult::InternalError(Json(ErrorResponse {
+                    error: format!("Storage error: {}", e),
+                }))
+            }
+        };
 
         // Aggregate signature
         let signing_package = frost_ed25519::SigningPackage::new(commitments_map, &message);

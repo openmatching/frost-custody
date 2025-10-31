@@ -259,6 +259,7 @@ max_signers = {}
 min_signers = {}
 
 [node.key_provider]
+type = "pkcs11"
 pkcs11_library = "/usr/lib/softhsm/libsofthsm2.so"
 slot = 0
 pin = "123456"

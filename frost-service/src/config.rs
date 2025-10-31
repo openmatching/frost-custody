@@ -102,10 +102,10 @@ pub struct NodeConfig {
 
 impl NodeConfig {
     /// Create key provider from configuration
-    pub fn create_key_provider(
+    pub async fn create_key_provider(
         &self,
     ) -> anyhow::Result<Box<dyn crate::node::key_provider::MasterKeyProvider>> {
-        self.key_provider.create_provider()
+        self.key_provider.create_provider().await
     }
 }
 

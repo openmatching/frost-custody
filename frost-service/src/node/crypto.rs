@@ -4,13 +4,13 @@ use bitcoin::hashes::{sha256, Hash};
 use rand::RngCore;
 
 /// Encrypt nonces with deterministic key for secure server-side storage
-pub fn encrypt_nonces_with_provider(
+pub async fn encrypt_nonces_with_provider(
     nonces_json: &[u8],
     message: &[u8],
     key_provider: &dyn MasterKeyProvider,
 ) -> Result<String> {
     // Derive deterministic encryption key from provider
-    let mut rng = key_provider.derive_rng("nonce-encryption", "")?;
+    let mut rng = key_provider.derive_rng("nonce-encryption", "").await?;
     let mut key_bytes = [0u8; 32];
     rng.fill_bytes(&mut key_bytes);
     let key_hash = sha256::Hash::hash(&key_bytes);
@@ -32,7 +32,7 @@ pub fn encrypt_nonces_with_provider(
 }
 
 /// Decrypt nonces and verify message binding
-pub fn decrypt_nonces_with_provider(
+pub async fn decrypt_nonces_with_provider(
     encrypted_hex: &str,
     message: &[u8],
     key_provider: &dyn MasterKeyProvider,
@@ -54,7 +54,7 @@ pub fn decrypt_nonces_with_provider(
     }
 
     // Decrypt with same deterministic key
-    let mut rng = key_provider.derive_rng("nonce-encryption", "")?;
+    let mut rng = key_provider.derive_rng("nonce-encryption", "").await?;
     let mut key_bytes = [0u8; 32];
     rng.fill_bytes(&mut key_bytes);
     let key_hash = sha256::Hash::hash(&key_bytes);

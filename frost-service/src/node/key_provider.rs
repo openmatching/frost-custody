@@ -5,6 +5,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use bitcoin::hashes::{sha256, Hash};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -34,11 +35,12 @@ use rand_chacha::ChaCha20Rng;
 ///
 /// Just change the `pkcs11_library` path in config to switch devices.
 /// No code changes needed - same interface for all providers.
+#[async_trait]
 pub trait MasterKeyProvider: Send + Sync {
-    /// Derive deterministic RNG for a given passphrase
+    /// Derive deterministic RNG for a given passphrase (async for cloud providers)
     ///
     /// Same passphrase MUST always produce same RNG seed (for DKG recovery)
-    fn derive_rng(&self, passphrase: &str, curve_prefix: &str) -> Result<ChaCha20Rng>;
+    async fn derive_rng(&self, passphrase: &str, curve_prefix: &str) -> Result<ChaCha20Rng>;
 
     /// Get a human-readable description of this provider
     fn description(&self) -> String;
@@ -60,18 +62,11 @@ pub trait MasterKeyProvider: Send + Sync {
     ///
     /// This is used to encrypt key shares before storing in RocksDB.
     /// HSM signs passphrase to create deterministic encryption key.
-    fn derive_storage_key(&self, passphrase: &str) -> Result<[u8; 32]> {
-        // Derive deterministic key for this passphrase
-        let mut rng = self.derive_rng(passphrase, "storage-encryption")?;
-        let mut key = [0u8; 32];
-        use rand::RngCore;
-        rng.fill_bytes(&mut key);
-        Ok(key)
-    }
+    async fn derive_storage_key(&self, passphrase: &str) -> Result<[u8; 32]>;
 
     /// Encrypt data for storage (AES-256-GCM)
-    fn encrypt_storage(&self, passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>> {
-        let key = self.derive_storage_key(passphrase)?;
+    async fn encrypt_storage(&self, passphrase: &str, plaintext: &[u8]) -> Result<Vec<u8>> {
+        let key = self.derive_storage_key(passphrase).await?;
         let cipher = Aes256Gcm::new(&key.into());
 
         // Derive deterministic nonce from passphrase (96 bits)
@@ -88,8 +83,8 @@ pub trait MasterKeyProvider: Send + Sync {
     }
 
     /// Decrypt data from storage (AES-256-GCM)
-    fn decrypt_storage(&self, passphrase: &str, ciphertext: &[u8]) -> Result<Vec<u8>> {
-        let key = self.derive_storage_key(passphrase)?;
+    async fn decrypt_storage(&self, passphrase: &str, ciphertext: &[u8]) -> Result<Vec<u8>> {
+        let key = self.derive_storage_key(passphrase).await?;
         let cipher = Aes256Gcm::new(&key.into());
 
         // Same deterministic nonce
@@ -199,8 +194,9 @@ impl Pkcs11KeyProvider {
     }
 }
 
+#[async_trait]
 impl MasterKeyProvider for Pkcs11KeyProvider {
-    fn derive_rng(&self, passphrase: &str, curve_prefix: &str) -> Result<ChaCha20Rng> {
+    async fn derive_rng(&self, passphrase: &str, curve_prefix: &str) -> Result<ChaCha20Rng> {
         // Read PIN (blocking read is OK for short critical sections)
         let pin_guard = self
             .pin
@@ -313,6 +309,123 @@ impl MasterKeyProvider for Pkcs11KeyProvider {
         drop(pin_guard);
         tracing::info!("🔒 HSM locked (PIN cleared from memory)");
     }
+
+    async fn derive_storage_key(&self, passphrase: &str) -> Result<[u8; 32]> {
+        let mut rng = self.derive_rng(passphrase, "storage-encryption").await?;
+        let mut key = [0u8; 32];
+        use rand::RngCore;
+        rng.fill_bytes(&mut key);
+        Ok(key)
+    }
+}
+
+// ============================================================================
+// AWS KMS Provider
+// ============================================================================
+
+#[cfg(feature = "aws-kms")]
+pub struct AwsKmsKeyProvider {
+    client: aws_sdk_kms::Client,
+    key_id: String,
+}
+
+#[cfg(feature = "aws-kms")]
+impl AwsKmsKeyProvider {
+    /// Create new AWS KMS key provider
+    pub async fn new(key_id: String) -> Result<Self> {
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .load()
+            .await;
+        let client = aws_sdk_kms::Client::new(&config);
+
+        // Test access
+        client
+            .describe_key()
+            .key_id(&key_id)
+            .send()
+            .await
+            .context("Failed to access AWS KMS key - check IAM permissions")?;
+
+        Ok(Self { client, key_id })
+    }
+
+    async fn sign_async(&self, message: &[u8]) -> Result<Vec<u8>> {
+        let response = self
+            .client
+            .sign()
+            .key_id(&self.key_id)
+            .message(aws_sdk_kms::primitives::Blob::new(message))
+            .signing_algorithm(aws_sdk_kms::types::SigningAlgorithmSpec::EcdsaSha256)
+            .send()
+            .await
+            .context("Failed to sign with AWS KMS")?;
+
+        let signature = response
+            .signature()
+            .context("No signature returned from AWS KMS")?
+            .as_ref()
+            .to_vec();
+
+        Ok(signature)
+    }
+}
+
+#[cfg(feature = "aws-kms")]
+#[async_trait]
+impl MasterKeyProvider for AwsKmsKeyProvider {
+    async fn derive_rng(&self, passphrase: &str, curve_prefix: &str) -> Result<ChaCha20Rng> {
+        // Prepare message
+        let mut message = Vec::new();
+        if !curve_prefix.is_empty() {
+            message.extend_from_slice(curve_prefix.as_bytes());
+            message.extend_from_slice(b":");
+        }
+        message.extend_from_slice(passphrase.as_bytes());
+
+        // Hash message
+        let message_hash = sha256::Hash::hash(&message);
+
+        // Sign with KMS (now properly async)
+        let signature = self
+            .sign_async(message_hash.as_ref())
+            .await
+            .context("Failed to derive RNG from AWS KMS")?;
+
+        // Derive deterministic RNG from signature
+        let seed_hash = sha256::Hash::hash(&signature);
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(seed_hash.as_ref());
+
+        Ok(ChaCha20Rng::from_seed(seed))
+    }
+
+    fn description(&self) -> String {
+        format!(
+            "AWS KMS (key={})",
+            &self.key_id[..16.min(self.key_id.len())]
+        )
+    }
+
+    // AWS KMS doesn't have "unlock/lock" concept - IAM controls access
+    fn unlock(&self, _pin: &str) -> Result<bool> {
+        Ok(true) // Always "unlocked" (controlled by AWS IAM)
+    }
+
+    fn is_locked(&self) -> bool {
+        false // AWS IAM controls access, not local lock
+    }
+
+    fn lock(&self) {
+        // No-op for AWS KMS
+    }
+
+    async fn derive_storage_key(&self, passphrase: &str) -> Result<[u8; 32]> {
+        let mut rng = self.derive_rng(passphrase, "storage-encryption").await?;
+        let mut key = [0u8; 32];
+        use rand::RngCore;
+        rng.fill_bytes(&mut key);
+        Ok(key)
+    }
 }
 
 // ============================================================================
@@ -320,23 +433,43 @@ impl MasterKeyProvider for Pkcs11KeyProvider {
 // ============================================================================
 
 #[derive(Debug, Clone, serde::Deserialize)]
-pub struct KeyProviderConfig {
-    pub pkcs11_library: String,
-    pub slot: usize,
-    pub pin: Option<String>,
-    pub key_label: String,
+#[serde(tag = "type")]
+#[serde(rename_all = "lowercase")]
+pub enum KeyProviderConfig {
+    #[cfg(feature = "pkcs11")]
+    Pkcs11 {
+        pkcs11_library: String,
+        slot: usize,
+        pin: Option<String>,
+        key_label: String,
+    },
+    #[cfg(feature = "aws-kms")]
+    #[serde(rename = "aws-kms")]
+    AwsKms { key_id: String },
 }
 
 impl KeyProviderConfig {
-    pub fn create_provider(&self) -> Result<Box<dyn MasterKeyProvider + 'static>> {
-        let provider = Pkcs11KeyProvider::new(
-            &self.pkcs11_library,
-            self.slot,
-            self.pin.clone(),
-            self.key_label.clone(),
-        )?;
-        tracing::info!("Using PKCS#11 HSM key provider: {}", provider.description());
-        Ok(Box::new(provider))
+    pub async fn create_provider(&self) -> Result<Box<dyn MasterKeyProvider + 'static>> {
+        match self {
+            #[cfg(feature = "pkcs11")]
+            KeyProviderConfig::Pkcs11 {
+                pkcs11_library,
+                slot,
+                pin,
+                key_label,
+            } => {
+                let provider =
+                    Pkcs11KeyProvider::new(pkcs11_library, *slot, pin.clone(), key_label.clone())?;
+                tracing::info!("Using PKCS#11 HSM key provider: {}", provider.description());
+                Ok(Box::new(provider))
+            }
+            #[cfg(feature = "aws-kms")]
+            KeyProviderConfig::AwsKms { key_id } => {
+                let provider = AwsKmsKeyProvider::new(key_id.clone()).await?;
+                tracing::info!("Using AWS KMS key provider: {}", provider.description());
+                Ok(Box::new(provider))
+            }
+        }
     }
 }
 

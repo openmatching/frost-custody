@@ -36,8 +36,8 @@ pub async fn run(
     // Create shared DKG state
     let dkg_state = Arc::new(dkg_state::DkgState::new());
 
-    // Create key provider
-    let key_provider = node_config.create_key_provider()?;
+    // Create key provider (async for AWS KMS)
+    let key_provider = node_config.create_key_provider().await?;
     tracing::info!(
         "✅ Key provider initialized: {}",
         key_provider.description()
