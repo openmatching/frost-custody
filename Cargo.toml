@@ -5,6 +5,8 @@ members = [
     "client",
     "tests/dkg-latency",
     "xtask",
+    "extension",
+    "relay-server",
 ]
 resolver = "2"
 
@@ -37,6 +39,7 @@ rand = "0.8"
 
 # Ethereum
 sha3 = "0.10"
+
 
 [profile.release]
 opt-level = 3

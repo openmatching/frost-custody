@@ -1,0 +1,38 @@
+[package]
+name = "frost-relay-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# libp2p for relay functionality - WebSocket (common, easy)
+libp2p = { version = "0.56", features = [
+    "relay",
+    "dcutr",
+    "gossipsub",
+    "tcp",
+    "websocket",
+    "dns",       # Required for WebSocket
+    "noise",
+    "yamux",
+    "macros",
+    "ping",
+    "identify",
+    "tokio",
+] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Config
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+anyhow = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
